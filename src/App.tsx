@@ -31,6 +31,9 @@ import { execute as executeSQLite } from "./helpers/sqlite";
 import { Data } from "./types/data";
 import { generateData } from "./helpers/generate-data";
 import { convertMsToS } from "./helpers/convert";
+import { LogObj } from "./types/logs";
+
+let logIdCounter = 0;
 
 function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -43,27 +46,43 @@ function App() {
 
   const toast = useToast();
 
+  const [logs, setLogs] = useState<Array<LogObj>>([]);
+
   const isRunning = isIndexedDBRunning || isSQLiteRunning;
+
+  const addLog = useCallback((content: string) => {
+    const id = logIdCounter++;
+    const logObj: LogObj = { id, content };
+    setLogs((prevState) => [...prevState, logObj]);
+    return id;
+  }, []);
+
+  const removeLog = useCallback((id: number) => {
+    setLogs((prevState) =>
+      prevState.filter(({ id: currentId }) => currentId !== id)
+    );
+  }, []);
 
   const getDataset = useCallback(() => {
     const newDatasetSize = inputRef.current ? +inputRef.current.value : 0;
-    console.warn({ datasetSize: newDatasetSize });
 
     const existedDatasetSize = datasetRef.current.length;
 
     if (newDatasetSize !== existedDatasetSize) {
+      const logId = addLog("[common] Generate data ...");
       // Generate new dataset
       datasetRef.current = generateData(newDatasetSize);
+      removeLog(logId);
     }
     return datasetRef.current;
-  }, []);
+  }, [addLog, removeLog]);
 
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
     setTimeout(() => {
       const dataset = getDataset();
-      executeIndexedDB(dataset)
+      executeIndexedDB(dataset, addLog, removeLog)
         .then((result) => {
           setIndexedDBResult({
             nTransactionRead: convertMsToS(result.nTransactionRead),
@@ -78,18 +97,19 @@ function App() {
             description: e.message,
             status: "error",
           });
+		  console.error(e);
         })
         .finally(() => {
           setIsIndexedDBRunning(false);
         });
     });
-  }, [getDataset, toast]);
+  }, [getDataset, toast, addLog, removeLog]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
     const dataset = getDataset();
 
-    executeSQLite(dataset)
+    executeSQLite(dataset, addLog, removeLog)
       .then((result) => {
         setSQLiteResult({
           nTransactionRead: convertMsToS(result.nTransactionRead),
@@ -104,11 +124,12 @@ function App() {
           description: e.message,
           status: "error",
         });
+		console.error(e);
       })
       .finally(() => {
         setIsSQLiteRunning(false);
       });
-  }, [getDataset, toast]);
+  }, [getDataset, toast, addLog, removeLog]);
 
   return (
     <Container
@@ -121,7 +142,7 @@ function App() {
       justifyContent="center"
     >
       <Center>
-        <Heading size="lg">DB engine benchmark 🧪</Heading>
+        <Heading size="lg">DB engine benchmark <span role="img" aria-label="">🧪</span></Heading>
       </Center>
       <Flex
         flexDirection={"column"}
@@ -253,6 +274,18 @@ function App() {
             </Tbody>
           </Table>
         </TableContainer>
+        <Flex alignItems="center" marginTop={10}>
+          <Text fontSize={14} marginRight={2} fontWeight={600}>
+            <span role="img" aria-label="">📃</span> Log:
+          </Text>
+          <Flex direction="column" gap="5px">
+            {logs.map(({ id, content }) => (
+              <Text key={id} fontSize={14}>
+                {content}
+              </Text>
+            ))}
+          </Flex>
+        </Flex>
       </Flex>
     </Container>
   );

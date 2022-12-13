@@ -10,3 +10,13 @@ export function patchDOMException(
   res.message = `${tags.map((tag) => `[${tag}]`).join("")} ${error.message}`;
   return res;
 }
+
+export function patchJSError(
+	error: Error,
+	patchData: PatchData
+  ): Error {
+	const res = new Error();
+	const { tags } = patchData;
+	res.message = `${tags.map((tag) => `[${tag}]`).join("")} ${error.message}`;
+	return res;
+  }

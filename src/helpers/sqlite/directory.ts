@@ -1,3 +1,5 @@
 export function getDBFilePath(dbName: string) {
-	return `${userPath}/sqlite/${dbName}.db`;
+  return path
+    .getUserPath()
+    .then((userPath) => `${userPath}\\sqlite\\${dbName}.db`);
 }

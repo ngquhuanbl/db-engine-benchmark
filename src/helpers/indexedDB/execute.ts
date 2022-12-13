@@ -3,23 +3,30 @@ import { Data } from "../../types/data";
 import { Result } from "../../types/result";
 import { patchDOMException } from "../patch-error";
 
-export async function execute(data: Array<Data>): Promise<Result> {
+export async function execute(
+  data: Array<Data>,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void
+): Promise<Result> {
   const dbInstance = await openDatabase();
-  
+
   async function resetData() {
-	const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
-	const objectStore = transaction.objectStore(TABLE_NAME);
-	const clearReq = objectStore.clear();
-	await new Promise<void>((resolve, reject) => {
-	  clearReq.onsuccess = function () {
-		resolve();
-	  };
-	  clearReq.onerror = function () {
-		reject(clearReq.error);
-	  };
-	});
+    const logId = addLog("[idb] reset db");
+    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
+    const objectStore = transaction.objectStore(TABLE_NAME);
+    const clearReq = objectStore.clear();
+    await new Promise<void>((resolve, reject) => {
+      clearReq.onsuccess = function () {
+        resolve();
+      };
+      clearReq.onerror = function () {
+        reject(clearReq.error);
+      };
+    }).finally(() => {
+      removeLog(logId);
+    });
   }
-  
+
   // Reset data
   await resetData();
 
@@ -29,6 +36,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
   // WRITE
   {
     const start = performance.now();
+    const logId = addLog("[idb][n-transaction] write");
     await Promise.all(
       data.map((item) => {
         const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
@@ -47,7 +55,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
           };
         });
       })
-    );
+    ).finally(() => removeLog(logId));
     const end = performance.now();
     nTransactionWrite = end - start;
   }
@@ -55,6 +63,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
   // READ
   {
     const start = performance.now();
+    const logId = addLog("[idb][n-transaction] read");
     await Promise.all(
       data.map((item) => {
         const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
@@ -73,7 +82,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
           };
         });
       })
-    );
+    ).finally(() => removeLog(logId));
     const end = performance.now();
     nTransactionRead = end - start;
   }
@@ -88,6 +97,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
   // WRITE
   {
     const start = performance.now();
+    const logId = addLog("[idb][one-transaction] write");
     const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
     const objectStore = transaction.objectStore(TABLE_NAME);
     await Promise.all(
@@ -106,13 +116,14 @@ export async function execute(data: Array<Data>): Promise<Result> {
           };
         });
       })
-    );
+    ).finally(() => removeLog(logId));
     const end = performance.now();
     oneTransactionWrite = end - start;
   }
   // READ
   {
     const start = performance.now();
+    const logId = addLog("[idb][one-transaction] read");
     const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
     const objectStore = transaction.objectStore(TABLE_NAME);
     await Promise.all(
@@ -131,7 +142,7 @@ export async function execute(data: Array<Data>): Promise<Result> {
           };
         });
       })
-    );
+    ).finally(() => removeLog(logId));
     const end = performance.now();
     oneTransactionRead = end - start;
   }

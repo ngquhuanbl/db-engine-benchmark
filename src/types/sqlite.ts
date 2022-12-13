@@ -1,1 +1,1 @@
-export type VALID_SQLITE_TYPE = 'TEXT' | 'INTEGER' | 'INTEGER' | 'REAL' | 'TEXT' | 'BLOB';
+export type VALID_SQLITE_TYPE = 'INTEGER' | 'REAL' | 'TEXT' | 'BLOB';

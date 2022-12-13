@@ -1,7 +1,8 @@
 // Module to control the application lifecycle and the native browser window.
-const { app, BrowserWindow, protocol } = require("electron");
+const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
+const { USER_PATH } = require("./channel");
 
 // Create the native browser window.
 function createWindow() {
@@ -32,6 +33,8 @@ function createWindow() {
   if (!app.isPackaged) {
     // mainWindow.webContents.openDevTools();
   }
+  
+  ipcMain.handle(USER_PATH, () => app.getPath('userData'))
 }
 
 // Setup a local proxy to adjust the paths of requested files when loading
