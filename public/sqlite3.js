@@ -70,11 +70,11 @@ class SQLite3 {
       instance.close((error) => {
         if (error) reject(error);
         else {
-			const filename = instance.filename;
-			this.filename2ConnectionID.delete(filename);
-			this.connectionID2ConnectionInstance.delete(connectionID);
-			resolve();
-		}
+          const filename = instance.filename;
+          this.filename2ConnectionID.delete(filename);
+          this.connectionID2ConnectionInstance.delete(connectionID);
+          resolve();
+        }
       });
     });
   }
@@ -82,14 +82,10 @@ class SQLite3 {
   run(connectionID, sql, params) {
     return new Promise((resolve, reject) => {
       const instance = this.getConnectionInstance(connectionID);
-      instance.run(
-        sql,
-        params,
-        (error) => {
-          if (error) reject(error);
-          else resolve();
-		}
-      );
+      instance.run(sql, params, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
     });
     // try {
     //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
@@ -102,14 +98,10 @@ class SQLite3 {
   get(connectionID, sql, params) {
     return new Promise((resolve, reject) => {
       const instance = this.getConnectionInstance(connectionID);
-      instance.get(
-        sql,
-        params,
-        (error, row) => {
-          if (error) reject(error);
-          else resolve(row);
-        },
-      );
+      instance.get(sql, params, (error, row) => {
+        if (error) reject(error);
+        else resolve(row);
+      });
     });
     // try {
     //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
@@ -136,13 +128,13 @@ class SQLite3 {
   }
 
   all(connectionID, sql, params) {
-	return new Promise((resolve, reject) => {
-		const instance = this.getConnectionInstance(connectionID);
-		instance.all(sql, params, (error, rows) => {
-		  if (error) reject(error);
-		  else resolve(rows);
-		});
-	  });
+    return new Promise((resolve, reject) => {
+      const instance = this.getConnectionInstance(connectionID);
+      instance.all(sql, params, (error, rows) => {
+        if (error) reject(error);
+        else resolve(rows);
+      });
+    });
     // try {
     //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
     //   instance.all(sql, params, callback, ...rest);
@@ -151,11 +143,13 @@ class SQLite3 {
     // }
   }
 
-  serialize(connectionID, callback) {
-	return new Promise((resolve, reject) => {
-		const instance = this.getConnectionInstance(connectionID);
-		instance.serialize(callback);
-	})
+  serialize(connectionID, commandData) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.serialize(() => {
+      commandData.forEach(({ sql, params, callback }) => {
+        instance.run(sql, params, callback);
+      });
+    });
     // try {
     //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
     //   instance.serialize(callback);

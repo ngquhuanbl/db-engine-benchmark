@@ -1,4 +1,5 @@
 import { sqlite3 } from "sqlite3";
+import { CommandData } from "./types/sqlite";
 
 declare global {
   var rawSqlite3: {
@@ -33,8 +34,8 @@ declare global {
       all(connectionID: string, sql: string, params: any): Promise<any[]>;
       all(connectionID: string, sql: string, ...params: any[]): Promise<any[]>;
       all(
-        connectionID: string, 
-		sql: unknown,
+        connectionID: string,
+        sql: unknown,
         params?: unknown,
         ...rest: unknown[]
       ): Promise<any[]>;
@@ -78,7 +79,7 @@ declare global {
       //     callback?: unknown,
       //     ...rest: unknown[]
       //   ): Statement;
-      serialize(connectionID: string): Promise<void>;
+      serialize(connectionID: string, commandData: CommandData): Promise<void>;
       //   parallelize(callback?: (() => void) | undefined): void;
       //   on(event: "trace", listener: (sql: string) => void): void;
       //   on(event: "profile", listener: (sql: string, time: number) => void): void;

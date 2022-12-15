@@ -21,7 +21,7 @@ process.once("loaded", () => {
 		get: (connectionID, sql, params) => sqlite3.get(connectionID, sql, params),
 		exec: (connectionID, sql) => sqlite3.exec(connectionID, sql),
 		all: (connectionID, sql, params) => sqlite3.all(connectionID, sql, params),
-		serialize: (connectionID, callback) => sqlite3.serialize(connectionID, callback),
+		serialize: (connectionID, commandData) => sqlite3.serialize(connectionID, commandData),
 	}
   });
   contextBridge.exposeInMainWorld("path", {
