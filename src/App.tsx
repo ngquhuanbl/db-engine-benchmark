@@ -32,6 +32,7 @@ import { Data } from "./types/data";
 import { generateData } from "./helpers/generate-data";
 import { convertMsToS } from "./helpers/convert";
 import { LogObj } from "./types/logs";
+import { DEFAULT_DATASET_SIZE } from "./constants/dataset";
 
 let logIdCounter = 0;
 
@@ -154,7 +155,7 @@ function App() {
           <FormLabel margin="0" marginRight="4">
             Dataset size (n):
           </FormLabel>
-          <NumberInput min={10} defaultValue={1000} flexGrow={1}>
+          <NumberInput min={1} defaultValue={DEFAULT_DATASET_SIZE} flexGrow={1}>
             <NumberInputField ref={inputRef} />
             <NumberInputStepper>
               <NumberIncrementStepper />

@@ -2,7 +2,7 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH } = require("./channel");
+const { USER_PATH, JOIN_PATHS } = require("./channel");
 
 // Create the native browser window.
 function createWindow() {
@@ -13,7 +13,7 @@ function createWindow() {
     // communicate between node-land and browser-land.
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-	  contextIsolation: true
+      contextIsolation: true,
     },
   });
 
@@ -31,10 +31,11 @@ function createWindow() {
 
   // Automatically open Chrome's DevTools in development mode.
   if (!app.isPackaged) {
-    // mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools();
   }
-  
-  ipcMain.handle(USER_PATH, () => app.getPath('userData'))
+
+  ipcMain.handle(USER_PATH, () => app.getPath("userData"));
+  ipcMain.handle(JOIN_PATHS, (_, ...paths) => path.join(...paths));
 }
 
 // Setup a local proxy to adjust the paths of requested files when loading

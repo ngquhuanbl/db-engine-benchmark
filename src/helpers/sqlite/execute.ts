@@ -1,4 +1,3 @@
-import type { sqlite3, Database } from "sqlite3";
 import {
   COLUMN_LIST_INFO,
   DB_NAME,
@@ -11,6 +10,7 @@ import { Z_OPEN_MODE } from "../../constants/sqlite";
 import { getDBFilePath } from "./directory";
 import { escapeStr } from "../escape-str";
 import { patchJSError } from "../patch-error";
+import { Database } from "./library";
 
 export async function execute(
   data: Array<Data>,
@@ -19,6 +19,7 @@ export async function execute(
 ): Promise<Result> {
   const conn = await openDatabase();
   async function resetData() {
+	// return;
     const logId = addLog("[sqlite] reset data");
     return new Promise<void>((resolve, reject) => {
       const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
@@ -119,6 +120,7 @@ export async function execute(
   //#region one transaction
   let oneTransactionRead = -1;
   let oneTransactionWrite = -1;
+  /* 
   // WRITE
   {
     const start = performance.now();
@@ -252,7 +254,7 @@ export async function execute(
     oneTransactionRead = end - start;
   }
   //#endregion
-
+*/
   conn.close((error) => {
     if (error) throw error;
   });
@@ -270,11 +272,12 @@ function openDatabase() {
     try {
       const fileName = await getDBFilePath(DB_NAME);
 
-      const instance = new sqlite3.Database(
-        fileName,
-        Z_OPEN_MODE,
-        (error: any) => error && reject(error)
-      );
+      const instance = await new Promise<Database>((resolve, reject) => {
+        const res = new Database(fileName, Z_OPEN_MODE, (error: any) => {
+          if (error) reject(error);
+          else resolve(res);
+        });
+      });
 
       // Create missing table
       const tableName = escapeStr(TABLE_NAME);
@@ -282,9 +285,10 @@ function openDatabase() {
         const queryStr = `SELECT name FROM sqlite_master WHERE type="table" AND name=${escapeStr(
           TABLE_NAME
         )}`;
-        instance.all(queryStr, (error, rows) =>
-          error ? reject(error) : resolve(rows.length === 1)
-        );
+        instance.all(queryStr, (error, rows) => {
+          if (error) reject(error);
+          else resolve(rows.length === 1);
+        });
       });
 
       if (!didTableExits) {
