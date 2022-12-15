@@ -4,7 +4,6 @@ import type {
   RunResult,
   Statement,
 } from "sqlite3";
-import { CommandData } from "../../types/sqlite";
 import { AsyncContainer } from "../async-container";
 export class Database implements SQLite3Database {
   static OPEN_READONLY = rawSqlite3.Database.OPEN_READONLY;
@@ -23,15 +22,19 @@ export class Database implements SQLite3Database {
   ) {
     this.connectionIDContainer = new AsyncContainer();
 
-    rawSqlite3.Database.getConnectionID(filename, mode)
-      .then((connectionID) => {
-        this.connectionIDContainer.resolve(connectionID);
-        if (callback) callback(null);
-      })
-      .catch((error) => {
-        this.connectionIDContainer.reject(error);
-        if (callback) callback(error);
-      });
+    rawSqlite3.Database.getConnectionID(
+      filename,
+      mode,
+      (error, connectionID) => {
+        if (error) {
+          this.connectionIDContainer.reject(error);
+          if (callback) callback(error);
+        } else {
+          this.connectionIDContainer.resolve(connectionID);
+          if (callback) callback(null);
+        }
+      }
+    );
   }
 
   private async getConnectionID(): Promise<string> {
@@ -45,15 +48,10 @@ export class Database implements SQLite3Database {
 
   close(callback?: ((err: Error | null) => void) | undefined): void {
     this.getConnectionID().then((connectionID) =>
-      rawSqlite3.Database.close(connectionID)
-        .then(() => {
-          if (callback) callback(null);
-        })
-        .catch((error) => {
-          if (callback) callback(error);
-        })
+      rawSqlite3.Database.close(connectionID, callback)
     );
   }
+
   run(
     sql: string,
     callback?: ((this: RunResult, err: Error | null) => void) | undefined
@@ -64,31 +62,17 @@ export class Database implements SQLite3Database {
     callback?: ((this: RunResult, err: Error | null) => void) | undefined
   ): this;
   run(sql: string, ...params: any[]): this;
-  run(
-    firstArg: unknown,
-    secondArg?: unknown,
-    thirdArg?: any,
-    ...otherArgs: unknown[]
-  ): this {
-    const sql = firstArg;
-    let params = secondArg;
-    let callback = thirdArg;
-    if (typeof secondArg === "function") {
-      params = undefined;
-      callback = secondArg;
-    }
-    this.getConnectionID()
-      .then((connectionID) =>
-        rawSqlite3.Database.run(connectionID, sql, params, ...otherArgs)
-      )
-      .then(() => {
-        if (callback) callback(null);
-      })
-      .catch((error) => {
-        if (callback) callback(error);
-      });
+  run(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
+    this.getConnectionID().then((connectionID) => {
+      const args = [sql, params, callback, ...rest].filter(
+        (item) => item !== undefined
+      );
+      // @ts-ignore
+      rawSqlite3.Database.run(connectionID, ...args);
+    });
     return this;
   }
+
   get(
     sql: string,
     callback?:
@@ -103,63 +87,37 @@ export class Database implements SQLite3Database {
       | undefined
   ): this;
   get(sql: string, ...params: any[]): this;
-  get(
-    firstArg: unknown,
-    secondArg?: unknown,
-    thirdArg?: any,
-    ...otherArgs: unknown[]
-  ): this {
-    const sql = firstArg;
-    let params = secondArg;
-    let callback = thirdArg;
-    if (typeof secondArg === "function") {
-      params = undefined;
-      callback = secondArg;
-    }
-    this.getConnectionID()
-      .then((connectionID) =>
-        rawSqlite3.Database.get(connectionID, sql, params)
-      )
-      .then((row) => {
-        if (callback) callback(null, row);
-      })
-      .catch((error) => {
-        if (callback) callback(error);
-      });
+  get(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
+    this.getConnectionID().then((connectionID) => {
+      const args = [sql, params, callback, ...rest].filter(
+        (item) => item !== undefined
+      );
+      // @ts-ignore
+      rawSqlite3.Database.get(connectionID, ...args);
+    });
+
     return this;
   }
+
   all(
     sql: string,
-    callback?:
-      | ((this: Statement, err: Error | null, rows: any[]) => void)
-      | undefined
+    callback?: ((err: Error | null, rows: any[]) => void) | undefined
   ): this;
   all(
     sql: string,
     params: any,
-    callback?:
-      | ((this: Statement, err: Error | null, rows: any[]) => void)
-      | undefined
+    callback?: ((err: Error | null, rows: any[]) => void) | undefined
   ): this;
   all(sql: string, ...params: any[]): this;
-  all(firstArg: unknown, secondArg?: any, thirdArg?: any): this {
-    const sql = firstArg;
-    let params = secondArg;
-    let callback = thirdArg;
-    if (typeof secondArg === "function") {
-      params = undefined;
-      callback = secondArg;
-    }
-    this.getConnectionID()
-      .then((connectionID) => {
-        return rawSqlite3.Database.all(connectionID, sql, params);
-      })
-      .then((rows) => {
-        if (callback) callback(null, rows);
-      })
-      .catch((error) => {
-        if (callback) callback(error);
-      });
+  all(sql: string, params?: any, callback?: any, ...rest: unknown[]): this {
+    this.getConnectionID().then((connectionID) => {
+      const args = [sql, params, callback, ...rest].filter(
+        (item) => item !== undefined
+      );
+      // @ts-ignore
+      return rawSqlite3.Database.all(connectionID, ...args);
+    });
+
     return this;
   }
   each(
@@ -191,16 +149,9 @@ export class Database implements SQLite3Database {
     sql: string,
     callback?: ((this: Statement, err: Error | null) => void) | undefined
   ): this {
-    this.getConnectionID()
-      .then((connectionID) => rawSqlite3.Database.exec(connectionID, sql))
-      .then(() => {
-        // @ts-ignore
-        if (callback) callback(null);
-      })
-      .catch((e) => {
-        // @ts-ignore
-        if (callback) callback(e);
-      });
+    this.getConnectionID().then((connectionID) =>
+      rawSqlite3.Database.exec(connectionID, sql, callback)
+    );
     return this;
   }
   prepare(
@@ -305,7 +256,7 @@ export class Database implements SQLite3Database {
 }
 
 class SerializedConn {
-  commandData: CommandData = [];
+  commandData: any[] = [];
   run(
     sql: string,
     callback?: ((this: RunResult, err: Error | null) => void) | undefined
@@ -316,25 +267,11 @@ class SerializedConn {
     callback?: ((this: RunResult, err: Error | null) => void) | undefined
   ): this;
   run(sql: string, ...params: any[]): this;
-  run(
-    firstArg: unknown,
-    secondArg?: unknown,
-    thirdArg?: any,
-    ...otherArgs: unknown[]
-  ): this {
-    const sql = firstArg as string;
-    let params = secondArg;
-    let callback = thirdArg;
-    if (typeof secondArg === "function") {
-      params = undefined;
-      callback = secondArg;
-    }
-
-    this.commandData.push({
-      sql,
-      params,
-      callback,
-    });
+  run(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
+    const args = [sql, params, callback, ...rest].filter(
+      (item) => item !== undefined
+    );
+    this.commandData.push(args);
     return this;
   }
 
@@ -352,20 +289,11 @@ class SerializedConn {
       | undefined
   ): this;
   get(sql: string, ...params: any[]): this;
-  get(firstArg: unknown, secondArg?: unknown, thirdArg?: any): this {
-    const sql = firstArg as string;
-    let params = secondArg;
-    let callback = thirdArg;
-    if (typeof secondArg === "function") {
-      params = undefined;
-      callback = secondArg;
-    }
-
-    this.commandData.push({
-      sql,
-      params,
-      callback,
-    });
+  get(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
+    const args = [sql, params, callback, ...rest].filter(
+      (item) => item !== undefined
+    );
+    this.commandData.push(args);
     return this;
   }
 }

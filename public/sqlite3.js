@@ -38,24 +38,22 @@ class SQLite3 {
   filename2ConnectionID = new Map();
   connectionID2ConnectionInstance = new Map();
 
-  getConnectionID(filename, mode) {
-    return new Promise((resolve, reject) => {
-      let id = this.filename2ConnectionID.get(filename);
-      if (id === undefined) {
-        const instance = new Database(filename, mode, (error) => {
-          if (error) {
-            reject(error);
-          } else {
-            id = instance.id;
-            this.filename2ConnectionID.set(filename, id);
-            this.connectionID2ConnectionInstance.set(id, instance);
-            resolve(id);
-          }
-        });
-      } else {
-        resolve(id);
-      }
-    });
+  getConnectionID(filename, mode, callback) {
+    let id = this.filename2ConnectionID.get(filename);
+    if (id === undefined) {
+      const instance = new Database(filename, mode, (error) => {
+        if (error) {
+          callback(error);
+        } else {
+          id = instance.id;
+          this.filename2ConnectionID.set(filename, id);
+          this.connectionID2ConnectionInstance.set(id, instance);
+          callback(null, id);
+        }
+      });
+    } else {
+      callback(id);
+    }
   }
 
   getConnectionInstance(connectionID) {
@@ -64,98 +62,46 @@ class SQLite3 {
     return instance;
   }
 
-  close(connectionID) {
-    return new Promise((resolve, reject) => {
-      const instance = this.getConnectionInstance(connectionID);
-      instance.close((error) => {
-        if (error) reject(error);
-        else {
-          const filename = instance.filename;
-          this.filename2ConnectionID.delete(filename);
-          this.connectionID2ConnectionInstance.delete(connectionID);
-          resolve();
-        }
-      });
+  close(connectionID, callback) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.close((error) => {
+      if (error) callback(error);
+      else {
+        const filename = instance.filename;
+        this.filename2ConnectionID.delete(filename);
+        this.connectionID2ConnectionInstance.delete(connectionID);
+        callback(null);
+      }
     });
   }
 
-  run(connectionID, sql, params) {
-    return new Promise((resolve, reject) => {
-      const instance = this.getConnectionInstance(connectionID);
-      instance.run(sql, params, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
-    // try {
-    //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    //   instance.run(sql, params, callback, ...rest);
-    // } catch (e) {
-    //   if (callback) callback(e);
-    // }
+  run(connectionID, ...args) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.run(...args);
   }
 
-  get(connectionID, sql, params) {
-    return new Promise((resolve, reject) => {
-      const instance = this.getConnectionInstance(connectionID);
-      instance.get(sql, params, (error, row) => {
-        if (error) reject(error);
-        else resolve(row);
-      });
-    });
-    // try {
-    //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    //   instance.get(sql, params, callback, ...rest);
-    // } catch (e) {
-    //   if (callback) callback(e);
-    // }
+  get(connectionID, ...args) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.get(...args);
   }
 
-  exec(connectionID, sql) {
-    return new Promise((resolve, reject) => {
-      const instance = this.getConnectionInstance(connectionID);
-      instance.exec(sql, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
-    // try {
-    //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    //   instance.exec(sql, callback);
-    // } catch (e) {
-    //   callback(e);
-    // }
+  exec(connectionID, ...args) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.exec(...args);
   }
 
-  all(connectionID, sql, params) {
-    return new Promise((resolve, reject) => {
-      const instance = this.getConnectionInstance(connectionID);
-      instance.all(sql, params, (error, rows) => {
-        if (error) reject(error);
-        else resolve(rows);
-      });
-    });
-    // try {
-    //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    //   instance.all(sql, params, callback, ...rest);
-    // } catch (e) {
-    //   if (callback) callback(e);
-    // }
+  all(connectionID, ...args) {
+    const instance = this.getConnectionInstance(connectionID);
+    instance.all(...args);
   }
 
   serialize(connectionID, commandData) {
     const instance = this.getConnectionInstance(connectionID);
     instance.serialize(() => {
-      commandData.forEach(({ sql, params, callback }) => {
-        instance.run(sql, params, callback);
+      commandData.forEach((args) => {
+        instance.run(...args);
       });
     });
-    // try {
-    //   const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    //   instance.serialize(callback);
-    // } catch (e) {
-    //   if (callback) callback(e);
-    // }
   }
 }
 

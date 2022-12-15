@@ -10,35 +10,65 @@ declare global {
       OPEN_SHAREDCACHE: number;
       OPEN_PRIVATECACHE: number;
       OPEN_URI: number;
-      getConnectionID(filename: string, mode?: number): Promise<string>;
-      close(connectionID: string): Promise<void>;
-      run(connectionID: string, sql: string): Promise<void>;
-      run(connectionID: string, sql: string, params: any): Promise<void>;
-      run(connectionID: string, sql: string, ...params: any[]): Promise<void>;
+
+      getConnectionID(
+        filename: string,
+        mode?: number,
+        callback?: (error: Error | null, connectionID: string) => void
+      ): void;
+
+      close(
+        connectionID: string,
+        callback?: (error: Error | null) => void
+      ): void;
+
       run(
         connectionID: string,
-        sql: unknown,
-        params?: unknown,
-        ...rest: unknown[]
+        sql: string,
+        callback?: (error: Error | null) => void
       ): Promise<void>;
-      get(connectionID: string, sql: string): Promise<any>;
-      get(connectionID: string, sql: string, params: any): Promise<any>;
-      get(connectionID: string, sql: string, ...params: any[]): Promise<any>;
+      run(
+        connectionID: string,
+        sql: string,
+        params: any,
+        callback?: (error: Error | null) => void
+      ): void;
+      run(connectionID: string, sql: string, ...params: any[]): void;
+
       get(
         connectionID: string,
-        sql: unknown,
-        params?: unknown,
-        ...rest: unknown[]
-      ): Promise<any>;
-      all(connectionID: string, sql: string): Promise<any[]>;
-      all(connectionID: string, sql: string, params: any): Promise<any[]>;
-      all(connectionID: string, sql: string, ...params: any[]): Promise<any[]>;
+        sql: string,
+        callback?: (error: Error | null, row: any) => void
+      ): void;
+      get(
+        connectionID: string,
+        sql: string,
+        params: any,
+        callback?: (error: Error | null, row: any) => void
+      ): void;
+      get(
+        connectionID: string,
+        sql: string,
+        ...params: any[],
+      ): void;
+
       all(
         connectionID: string,
-        sql: unknown,
-        params?: unknown,
-        ...rest: unknown[]
-      ): Promise<any[]>;
+        sql: string,
+        callback?: (error: Error | null, rows: any[]) => void
+      ): void;
+      all(
+        connectionID: string,
+        sql: string,
+        params: any,
+        callback?: (error: Error | null, rows: any[]) => void
+      ): void;
+      all(
+        connectionID: string,
+        sql: string,
+        ...params: any[],
+      ): void;
+
       //   each(
       //     sql: string,
       //     callback?:
@@ -62,7 +92,7 @@ declare global {
       //     complete?: unknown,
       //     ...rest: unknown[]
       //   ): void;
-      exec(connectionID: string, sql: string): Promise<void>;
+      exec(connectionID: string, sql: string, callback?: (error: Error | null) => void): Promise<void>;
       //   prepare(
       //     sql: string,
       //     callback?: ((err: Error | null) => void) | undefined
