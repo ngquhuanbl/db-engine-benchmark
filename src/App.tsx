@@ -98,7 +98,7 @@ function App() {
             description: e.message,
             status: "error",
           });
-		  console.error(e);
+          console.error(e);
         })
         .finally(() => {
           setIsIndexedDBRunning(false);
@@ -125,7 +125,7 @@ function App() {
           description: e.message,
           status: "error",
         });
-		console.error(e);
+        console.error(e);
       })
       .finally(() => {
         setIsSQLiteRunning(false);
@@ -143,7 +143,12 @@ function App() {
       justifyContent="center"
     >
       <Center>
-        <Heading size="lg">DB engine benchmark <span role="img" aria-label="">🧪</span></Heading>
+        <Heading size="lg">
+          DB engine benchmark{" "}
+          <span role="img" aria-label="">
+            🧪
+          </span>
+        </Heading>
       </Center>
       <Flex
         flexDirection={"column"}
@@ -170,7 +175,9 @@ function App() {
             </TableCaption>
             <Thead>
               <Tr>
-                <Th rowSpan={2}>DB Engine</Th>
+                <Th rowSpan={2} width={270}>
+                  DB Engine
+                </Th>
                 <Th colSpan={2} textAlign="center">
                   n transaction
                 </Th>
@@ -277,7 +284,10 @@ function App() {
         </TableContainer>
         <Flex alignItems="center" marginTop={10}>
           <Text fontSize={14} marginRight={2} fontWeight={600}>
-            <span role="img" aria-label="">📃</span> Log:
+            <span role="img" aria-label="">
+              📃
+            </span>{" "}
+            Log:
           </Text>
           <Flex direction="column" gap="5px">
             {logs.map(({ id, content }) => (

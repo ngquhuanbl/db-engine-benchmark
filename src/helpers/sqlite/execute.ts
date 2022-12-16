@@ -39,76 +39,80 @@ export async function execute(
 
   // WRITE
   {
-    const start = performance.now();
     const logId = addLog("[sqlite][n-transaction] write");
-    await Promise.all(
-      data.map((jsData: any) => {
-        const params: any = {};
-        const fieldList: string[] = [];
-        const valuesPlaceholder: string[] = [];
-        COLUMN_LIST_INFO.forEach(({ name, type }) => {
-          fieldList.push(name);
-          valuesPlaceholder.push(`$${name}`);
-          const jsValue = jsData[name];
+    const requests = data.map((jsData: any) => {
+      const params: any = {};
+      const fieldList: string[] = [];
+      const valuesPlaceholder: string[] = [];
+      COLUMN_LIST_INFO.forEach(({ name, type }) => {
+        fieldList.push(name);
+        valuesPlaceholder.push(`$${name}`);
+        const jsValue = jsData[name];
 
-          if (type === "TEXT") {
-            params[`$${name}`] = JSON.stringify(jsValue);
-          } else {
-            params[`$${name}`] = jsValue;
-          }
-        });
+        if (type === "TEXT") {
+          params[`$${name}`] = JSON.stringify(jsValue);
+        } else {
+          params[`$${name}`] = jsValue;
+        }
+      });
 
-        const query = `INSERT OR REPLACE INTO ${escapeStr(
-          TABLE_NAME
-        )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
-        return new Promise<void>((resolve, reject) => {
-          conn.run(query, params, (error) =>
-            error
-              ? reject(
-                  patchJSError(error, {
-                    tags: ["sqlite", "n-transaction", "write"],
-                  })
-                )
-              : resolve()
-          );
-        });
-      })
-    ).finally(() => removeLog(logId));
-    const end = performance.now();
+      const query = `INSERT OR REPLACE INTO ${escapeStr(
+        TABLE_NAME
+      )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+      return new Promise<void>((resolve, reject) => {
+        conn.run(query, params, (error) =>
+          error
+            ? reject(
+                patchJSError(error, {
+                  tags: ["sqlite", "n-transaction", "write"],
+                })
+              )
+            : resolve()
+        );
+      });
+    });
+    const start = performance.now();
+    let end = -1;
+    await Promise.all(requests).finally(() => {
+      end = performance.now();
+      removeLog(logId);
+    });
     nTransactionWrite = end - start;
   }
 
   // READ
   {
-    const start = performance.now();
     const logId = addLog("[sqlite][n-transaction] read");
-    await Promise.all(
-      data.map((jsData: any) => {
-        const params: any[] = [];
-        const primaryKeyConditions: string[] = [];
-        PRIMARY_KEYS.forEach((key) => {
-          primaryKeyConditions.push(`${escapeStr(key)}=?`);
-          params.push(jsData[key]);
-        });
+    const requests = data.map((jsData: any) => {
+      const params: any[] = [];
+      const primaryKeyConditions: string[] = [];
+      PRIMARY_KEYS.forEach((key) => {
+        primaryKeyConditions.push(`${escapeStr(key)}=?`);
+        params.push(jsData[key]);
+      });
 
-        const query = `SELECT * FROM ${escapeStr(
-          TABLE_NAME
-        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+      const query = `SELECT * FROM ${escapeStr(
+        TABLE_NAME
+      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-        return new Promise<void>((resolve, reject) => {
-          conn.get(query, params, (error) =>
-            error
-              ? reject(
-                  patchJSError(error, {
-                    tags: ["sqlite", "n-transaction", "read"],
-                  })
-                )
-              : resolve()
-          );
-        });
-      })
-    ).finally(() => removeLog(logId));
-    const end = performance.now();
+      return new Promise<void>((resolve, reject) => {
+        conn.get(query, params, (error) =>
+          error
+            ? reject(
+                patchJSError(error, {
+                  tags: ["sqlite", "n-transaction", "read"],
+                })
+              )
+            : resolve()
+        );
+      });
+    });
+    const start = performance.now();
+    let end = -1;
+    await Promise.all(requests).finally(() => {
+      end = performance.now();
+      removeLog(logId);
+    });
     nTransactionRead = end - start;
   }
 
@@ -123,8 +127,9 @@ export async function execute(
 
   // WRITE
   {
-    const start = performance.now();
     const logId = addLog("[sqlite][one-transaction] write");
+    const start = performance.now();
+    let end = -1;
     await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -179,15 +184,18 @@ export async function execute(
           else resolve();
         });
       });
-    }).finally(() => removeLog(logId));
-    const end = performance.now();
+    }).finally(() => {
+      end = performance.now();
+      removeLog(logId);
+    });
     oneTransactionWrite = end - start;
   }
 
   // READ
   {
-    const start = performance.now();
     const logId = addLog("[sqlite][one-transaction] read");
+    const start = performance.now();
+    let end = -1;
     await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -230,8 +238,10 @@ export async function execute(
           else resolve();
         });
       });
-    }).finally(() => removeLog(logId));
-    const end = performance.now();
+    }).finally(() => {
+      end = performance.now();
+      removeLog(logId);
+    });
     oneTransactionRead = end - start;
   }
 
