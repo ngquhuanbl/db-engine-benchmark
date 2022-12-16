@@ -1,5 +1,8 @@
 import React, { useCallback, useRef, useState } from "react";
+
+import { ArrowRightIcon } from "@chakra-ui/icons";
 import {
+  Button,
   Center,
   Container,
   Flex,
@@ -23,33 +26,44 @@ import {
   Tr,
   useToast,
 } from "@chakra-ui/react";
-import { ArrowRightIcon } from "@chakra-ui/icons";
-import { Result } from "./types/result";
 
+import { DEFAULT_DATASET_SIZE } from "./constants/dataset";
+import { convertMsToS } from "./helpers/convert";
+import { delay } from "./helpers/delay";
+import { generateData } from "./helpers/generate-data";
 import { execute as executeIndexedDB } from "./helpers/indexedDB";
+import { serializePromises } from "./helpers/serialize-promises";
 import { execute as executeSQLite } from "./helpers/sqlite";
 import { Data } from "./types/data";
-import { generateData } from "./helpers/generate-data";
-import { convertMsToS } from "./helpers/convert";
 import { LogObj } from "./types/logs";
-import { DEFAULT_DATASET_SIZE } from "./constants/dataset";
+import { Result } from "./types/result";
 
 let logIdCounter = 0;
 
 function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [indexedDBResult, setIndexedDBResult] = useState<Result | null>(null);
-  const [sqliteResult, setSQLiteResult] = useState<Result | null>(null);
+  const [sqlitePlusContextBridgeResult, setSQLitePlusContextBridgeResult] =
+    useState<Result | null>(null);
+  const [sqliteOnlyResult, setSQLiteOnlyResult] = useState<Result | null>(null);
+
   const datasetRef = useRef<Array<Data>>([]);
 
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
-  const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
+  const [
+    isSQLitePlusContextBridgeRunning,
+    setIsSQLitePlusContextBridgeRunning,
+  ] = useState(false);
+  const [isSQLiteOnlyRunning, setIsSQLiteOnlyRunning] = useState(false);
 
   const toast = useToast();
 
   const [logs, setLogs] = useState<Array<LogObj>>([]);
 
-  const isRunning = isIndexedDBRunning || isSQLiteRunning;
+  const isRunning =
+    isIndexedDBRunning ||
+    isSQLitePlusContextBridgeRunning ||
+    isSQLiteOnlyRunning;
 
   const addLog = useCallback((content: string) => {
     const id = logIdCounter++;
@@ -79,13 +93,44 @@ function App() {
   }, [addLog, removeLog]);
 
   const runIndexedDB = useCallback(() => {
-    setIsIndexedDBRunning(true);
+    return new Promise<void>((resolve) => {
+      setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
+      setTimeout(() => {
+        const dataset = getDataset();
+        executeIndexedDB(dataset, addLog, removeLog)
+          .then((result) => {
+            setIndexedDBResult({
+              nTransactionRead: convertMsToS(result.nTransactionRead),
+              nTransactionWrite: convertMsToS(result.nTransactionWrite),
+              oneTransactionRead: convertMsToS(result.oneTransactionRead),
+              oneTransactionWrite: convertMsToS(result.oneTransactionWrite),
+            });
+          })
+          .catch((e) => {
+            toast({
+              title: "IndexedDB error",
+              description: e.message,
+              status: "error",
+            });
+            console.error(e);
+          })
+          .finally(() => {
+            setIsIndexedDBRunning(false);
+            resolve();
+          });
+      });
+    });
+  }, [getDataset, toast, addLog, removeLog]);
+
+  const runSQLitePlusContextBridge = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      setIsSQLitePlusContextBridgeRunning(true);
       const dataset = getDataset();
-      executeIndexedDB(dataset, addLog, removeLog)
+
+      executeSQLite(dataset, addLog, removeLog)
         .then((result) => {
-          setIndexedDBResult({
+          setSQLitePlusContextBridgeResult({
             nTransactionRead: convertMsToS(result.nTransactionRead),
             nTransactionWrite: convertMsToS(result.nTransactionWrite),
             oneTransactionRead: convertMsToS(result.oneTransactionRead),
@@ -94,43 +139,57 @@ function App() {
         })
         .catch((e) => {
           toast({
-            title: "IndexedDB error",
+            title: "SQLite error",
             description: e.message,
             status: "error",
           });
-		  console.error(e);
+          console.error(e);
         })
         .finally(() => {
-          setIsIndexedDBRunning(false);
+          setIsSQLitePlusContextBridgeRunning(false);
+          resolve();
         });
     });
   }, [getDataset, toast, addLog, removeLog]);
 
-  const runSQLite = useCallback(() => {
-    setIsSQLiteRunning(true);
-    const dataset = getDataset();
+  const runSQLiteOnly = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      setIsSQLiteOnlyRunning(true);
+      const dataset = getDataset();
 
-    executeSQLite(dataset, addLog, removeLog)
-      .then((result) => {
-        setSQLiteResult({
-          nTransactionRead: convertMsToS(result.nTransactionRead),
-          nTransactionWrite: convertMsToS(result.nTransactionWrite),
-          oneTransactionRead: convertMsToS(result.oneTransactionRead),
-          oneTransactionWrite: convertMsToS(result.oneTransactionWrite),
+      rawSqlite3.Database.execute(dataset, addLog, removeLog)
+        .then((result) => {
+          setSQLiteOnlyResult({
+            nTransactionRead: convertMsToS(result.nTransactionRead),
+            nTransactionWrite: convertMsToS(result.nTransactionWrite),
+            oneTransactionRead: convertMsToS(result.oneTransactionRead),
+            oneTransactionWrite: convertMsToS(result.oneTransactionWrite),
+          });
+        })
+        .catch((e) => {
+          toast({
+            title: "SQLite error",
+            description: e.message,
+            status: "error",
+          });
+          console.error(e);
+        })
+        .finally(() => {
+          setIsSQLiteOnlyRunning(false);
+          resolve();
         });
-      })
-      .catch((e) => {
-        toast({
-          title: "SQLite error",
-          description: e.message,
-          status: "error",
-        });
-		console.error(e);
-      })
-      .finally(() => {
-        setIsSQLiteRunning(false);
-      });
+    });
   }, [getDataset, toast, addLog, removeLog]);
+
+  const runAll = useCallback(() => {
+    serializePromises([
+      () => runIndexedDB(),
+      () => delay(0),
+      () => runSQLiteOnly(),
+      () => delay(0),
+      () => runSQLitePlusContextBridge(),
+    ]);
+  }, [runIndexedDB, runSQLitePlusContextBridge, runSQLiteOnly]);
 
   return (
     <Container
@@ -143,7 +202,12 @@ function App() {
       justifyContent="center"
     >
       <Center>
-        <Heading size="lg">DB engine benchmark <span role="img" aria-label="">🧪</span></Heading>
+        <Heading size="lg">
+          DB engine benchmark{" "}
+          <span role="img" aria-label="">
+            🧪
+          </span>
+        </Heading>
       </Center>
       <Flex
         flexDirection={"column"}
@@ -170,7 +234,21 @@ function App() {
             </TableCaption>
             <Thead>
               <Tr>
-                <Th rowSpan={2}>DB Engine</Th>
+                <Th rowSpan={2} width={280}>
+                  <Flex justifyContent={"space-between"} alignItems="center">
+                    <Text>DB Engine</Text>
+                    <Button
+                      leftIcon={<ArrowRightIcon />}
+                      colorScheme="blue"
+                      variant="solid"
+                      isLoading={isRunning}
+                      size="sm"
+                      onClick={runAll}
+                    >
+                      Run all
+                    </Button>
+                  </Flex>
+                </Th>
                 <Th colSpan={2} textAlign="center">
                   n transaction
                 </Th>
@@ -195,6 +273,7 @@ function App() {
                       icon={<ArrowRightIcon />}
                       size="sm"
                       isLoading={isIndexedDBRunning}
+                      isDisabled={isRunning}
                       aria-label={"run IndexedDB"}
                       onClick={runIndexedDB}
                     />
@@ -237,37 +316,84 @@ function App() {
                       colorScheme="teal"
                       icon={<ArrowRightIcon />}
                       size="sm"
-                      isLoading={isSQLiteRunning}
-                      aria-label={"run SQLite"}
-                      onClick={runSQLite}
+                      isLoading={isSQLiteOnlyRunning}
+                      isDisabled={isRunning}
+                      aria-label={"run SQLite only"}
+                      onClick={runSQLiteOnly}
                     />
                   </Flex>
                 </Td>
-                {isSQLiteRunning ? (
+                {isSQLiteOnlyRunning ? (
                   <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
                     Running...
                   </Td>
                 ) : (
                   <>
                     <Td textAlign="center">
-                      {sqliteResult === null
+                      {sqliteOnlyResult === null
                         ? "..."
-                        : sqliteResult.nTransactionRead}
+                        : sqliteOnlyResult.nTransactionRead}
                     </Td>
                     <Td textAlign="center">
-                      {sqliteResult === null
+                      {sqliteOnlyResult === null
                         ? "..."
-                        : sqliteResult.nTransactionWrite}
+                        : sqliteOnlyResult.nTransactionWrite}
                     </Td>
                     <Td textAlign="center">
-                      {sqliteResult === null
+                      {sqliteOnlyResult === null
                         ? "..."
-                        : sqliteResult.oneTransactionRead}
+                        : sqliteOnlyResult.oneTransactionRead}
                     </Td>
                     <Td textAlign="center">
-                      {sqliteResult === null
+                      {sqliteOnlyResult === null
                         ? "..."
-                        : sqliteResult.oneTransactionWrite}
+                        : sqliteOnlyResult.oneTransactionWrite}
+                    </Td>
+                  </>
+                )}
+              </Tr>
+              <Tr>
+                <Td>
+                  <Flex justifyContent={"space-between"} alignItems="center">
+                    <Text>
+                      SQLite <b>+ contextBridge</b>
+                    </Text>
+                    <IconButton
+                      colorScheme="teal"
+                      icon={<ArrowRightIcon />}
+                      size="sm"
+                      isLoading={isSQLitePlusContextBridgeRunning}
+                      isDisabled={isRunning}
+                      aria-label={"run SQLite plus contextBridge"}
+                      onClick={runSQLitePlusContextBridge}
+                    />
+                  </Flex>
+                </Td>
+                {isSQLitePlusContextBridgeRunning ? (
+                  <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
+                    Running...
+                  </Td>
+                ) : (
+                  <>
+                    <Td textAlign="center">
+                      {sqlitePlusContextBridgeResult === null
+                        ? "..."
+                        : sqlitePlusContextBridgeResult.nTransactionRead}
+                    </Td>
+                    <Td textAlign="center">
+                      {sqlitePlusContextBridgeResult === null
+                        ? "..."
+                        : sqlitePlusContextBridgeResult.nTransactionWrite}
+                    </Td>
+                    <Td textAlign="center">
+                      {sqlitePlusContextBridgeResult === null
+                        ? "..."
+                        : sqlitePlusContextBridgeResult.oneTransactionRead}
+                    </Td>
+                    <Td textAlign="center">
+                      {sqlitePlusContextBridgeResult === null
+                        ? "..."
+                        : sqlitePlusContextBridgeResult.oneTransactionWrite}
                     </Td>
                   </>
                 )}
@@ -275,9 +401,12 @@ function App() {
             </Tbody>
           </Table>
         </TableContainer>
-        <Flex alignItems="center" marginTop={10}>
+        <Flex alignItems="center" marginTop={5}>
           <Text fontSize={14} marginRight={2} fontWeight={600}>
-            <span role="img" aria-label="">📃</span> Log:
+            <span role="img" aria-label="">
+              📃
+            </span>{" "}
+            Log:
           </Text>
           <Flex direction="column" gap="5px">
             {logs.map(({ id, content }) => (

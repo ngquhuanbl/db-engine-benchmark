@@ -1,5 +1,7 @@
 import { sqlite3 } from "sqlite3";
 import { CommandData } from "./types/sqlite";
+import { Data } from "./types/data";
+import { Result } from "./types/result";
 
 declare global {
   var rawSqlite3: {
@@ -10,6 +12,12 @@ declare global {
       OPEN_SHAREDCACHE: number;
       OPEN_PRIVATECACHE: number;
       OPEN_URI: number;
+
+      execute(
+        dataset: Array<Data>,
+        addLog: (content: string) => number,
+        removeLog: (id: number) => void
+      ): Promise<Result>;
 
       getConnectionID(
         filename: string,
@@ -46,11 +54,7 @@ declare global {
         params: any,
         callback?: (error: Error | null, row: any) => void
       ): void;
-      get(
-        connectionID: string,
-        sql: string,
-        ...params: any[],
-      ): void;
+      get(connectionID: string, sql: string, ...params: any[]): void;
 
       all(
         connectionID: string,
@@ -63,11 +67,7 @@ declare global {
         params: any,
         callback?: (error: Error | null, rows: any[]) => void
       ): void;
-      all(
-        connectionID: string,
-        sql: string,
-        ...params: any[],
-      ): void;
+      all(connectionID: string, sql: string, ...params: any[]): void;
 
       //   each(
       //     sql: string,
@@ -92,7 +92,11 @@ declare global {
       //     complete?: unknown,
       //     ...rest: unknown[]
       //   ): void;
-      exec(connectionID: string, sql: string, callback?: (error: Error | null) => void): Promise<void>;
+      exec(
+        connectionID: string,
+        sql: string,
+        callback?: (error: Error | null) => void
+      ): Promise<void>;
       //   prepare(
       //     sql: string,
       //     callback?: ((err: Error | null) => void) | undefined

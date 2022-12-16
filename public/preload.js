@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const { USER_PATH, JOIN_PATHS } = require("./channel");
 const sqlite3 = require("./sqlite3");
+const { execute: executeSQLiteRaw } = require("./execute.sqlite");
 
 // As an example, here we use the exposeInMainWorld API to expose the browsers
 // and node versions to the main window.
@@ -15,6 +16,7 @@ process.once("loaded", () => {
       OPEN_SHAREDCACHE: sqlite3.OPEN_SHAREDCACHE,
       OPEN_PRIVATECACHE: sqlite3.OPEN_PRIVATECACHE,
       OPEN_URI: sqlite3.OPEN_URI,
+	  execute: (dataset, addLog, removeLog) => executeSQLiteRaw(dataset, addLog, removeLog),
       getConnectionID: (filename, mode, callback) =>
         sqlite3.getConnectionID(filename, mode, callback),
       close: (connectionID, callback) => sqlite3.close(connectionID, callback),
