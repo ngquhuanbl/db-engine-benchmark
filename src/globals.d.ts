@@ -109,7 +109,7 @@ declare global {
       //     callback?: unknown,
       //     ...rest: unknown[]
       //   ): Statement;
-      serialize(connectionID: string, commandData: CommandData): Promise<void>;
+      serialize(connectionID: string, callback: (conn: sqlite3.Database) => void): Promise<void>;
       //   parallelize(callback?: (() => void) | undefined): void;
       //   on(event: "trace", listener: (sql: string) => void): void;
       //   on(event: "profile", listener: (sql: string, time: number) => void): void;

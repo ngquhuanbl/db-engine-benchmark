@@ -1,28 +1,19 @@
-import { DB_NAME, TABLE_NAME } from "../../constants/schema";
-import { Data } from "../../types/data";
-import { Result } from "../../types/result";
-import { patchDOMException } from "../patch-error";
+import { TABLE_NAME } from "../../../constants/schema";
+import { Action } from "../../../types/action";
+import { SingleReadWriteResult } from "../../../types/result";
+import { patchDOMException } from "../../patch-error";
+import { openIndexdDBDatabase, resetIndexedDBData } from "../common";
 
-export async function execute(
-  data: Array<Data>,
-  addLog: (content: string) => number,
-  removeLog: (id: number) => void
-): Promise<Result> {
-  const dbInstance = await openDatabase();
+export const execute: Action<SingleReadWriteResult> = async (
+  data,
+  addLog,
+  removeLog
+) => {
+  const dbInstance = await openIndexdDBDatabase();
 
   async function resetData() {
     const logId = addLog("[idb] reset db");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
-    const objectStore = transaction.objectStore(TABLE_NAME);
-    const clearReq = objectStore.clear();
-    await new Promise<void>((resolve, reject) => {
-      clearReq.onsuccess = function () {
-        resolve();
-      };
-      clearReq.onerror = function () {
-        reject(clearReq.error);
-      };
-    }).finally(() => {
+    return resetIndexedDBData(dbInstance).finally(() => {
       removeLog(logId);
     });
   }
@@ -35,7 +26,7 @@ export async function execute(
   let nTransactionWrite = -1;
   // WRITE
   {
-    const logId = addLog("[idb][n-transaction] write");
+    const logId = addLog("[idb][single-read-write][n-transaction] write");
     const requests = data.map((item) => {
       const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
       const objectStore = transaction.objectStore(TABLE_NAME);
@@ -47,7 +38,7 @@ export async function execute(
         writeReq.onerror = function () {
           reject(
             patchDOMException(writeReq.error!, {
-              tags: ["idb", "n-transaction", "write"],
+              tags: ["idb", "single-read-write", "n-transaction", "write"],
             })
           );
         };
@@ -64,7 +55,7 @@ export async function execute(
 
   // READ
   {
-    const logId = addLog("[idb][n-transaction] read");
+    const logId = addLog("[idb][single-read-write][n-transaction] read");
     const requests = data.map((item) => {
       const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
       const objectStore = transaction.objectStore(TABLE_NAME);
@@ -76,7 +67,7 @@ export async function execute(
         readReq.onerror = function () {
           reject(
             patchDOMException(readReq.error!, {
-              tags: ["idb", "n-transaction", "read"],
+              tags: ["idb", "single-read-write", "n-transaction", "read"],
             })
           );
         };
@@ -100,7 +91,7 @@ export async function execute(
   let oneTransactionWrite = -1;
   // WRITE
   {
-    const logId = addLog("[idb][one-transaction] write");
+    const logId = addLog("[idb][single-read-write][one-transaction] write");
     const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests = data.map((item) => {
@@ -112,7 +103,7 @@ export async function execute(
         writeReq.onerror = function () {
           reject(
             patchDOMException(writeReq.error!, {
-              tags: ["idb", "one-transaction", "write"],
+              tags: ["idb", "single-read-write", "n-transaction", "write"],
             })
           );
         };
@@ -128,7 +119,7 @@ export async function execute(
   }
   // READ
   {
-    const logId = addLog("[idb][one-transaction] read");
+    const logId = addLog("[idb][single-read-write][one-transaction] read");
     const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests = data.map((item) => {
@@ -140,7 +131,7 @@ export async function execute(
         readReq.onerror = function () {
           reject(
             patchDOMException(readReq.error!, {
-              tags: ["idb", "one-transaction", "read"],
+              tags: ["idb", "single-read-write", "n-transaction", "read"],
             })
           );
         };
@@ -162,20 +153,4 @@ export async function execute(
     oneTransactionRead,
     oneTransactionWrite,
   };
-}
-
-async function openDatabase(): Promise<IDBDatabase> {
-  const openReq = indexedDB.open(DB_NAME);
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    openReq.onupgradeneeded = function () {
-      const dbInstance = openReq.result;
-      dbInstance.createObjectStore(TABLE_NAME, { keyPath: "msgId" });
-    };
-    openReq.onsuccess = function () {
-      resolve(openReq.result);
-    };
-    openReq.onerror = function () {
-      reject(openReq.error);
-    };
-  });
-}
+};

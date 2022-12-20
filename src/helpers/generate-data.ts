@@ -1,13 +1,19 @@
 import { faker } from "@faker-js/faker";
+import { MSG_ID_LENGTH } from "../constants/dataset";
 
 import { Data, MessageSrc } from "../types/data";
+
+function getUserId(): number {
+  return Math.round(Math.random() * 8);
+}
 export function generateData(size: number): Array<Data> {
+  let msgIdCounter = 0;
   return Array.from({ length: size }).map(() => ({
-    msgId: faker.datatype.uuid(),
+    msgId: `${msgIdCounter++}`.padStart(MSG_ID_LENGTH, "0"),
     cliMsgId: faker.datatype.uuid(),
-    toUid: faker.datatype.uuid(),
+    toUid: `${getUserId()}`.padStart(MSG_ID_LENGTH, "0"),
     msgType: faker.datatype.number({ min: 1, max: 3 }),
-    sendDttm: faker.datatype.datetime().toISOString(),
+    sendDttm: `${faker.datatype.datetime().getTime()}`,
     isExpired: faker.datatype.boolean(),
     isExpiredAll: faker.datatype.boolean(),
     message: faker.datatype.boolean()

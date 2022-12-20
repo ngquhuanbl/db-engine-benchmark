@@ -172,13 +172,10 @@ export class Database implements SQLite3Database {
   ): import("sqlite3").Statement {
     throw new Error("Method not implemented.");
   }
-  serialize(callback?: ((conn: SerializedConn) => void) | undefined): void {
-    const serializedConn = new SerializedConn();
+  serialize(callback?: ((conn: Database) => void) | undefined): void {
     if (callback) {
-      callback(serializedConn);
-      const commandData = serializedConn.commandData;
       this.getConnectionID().then((connectionID) =>
-        rawSqlite3.Database.serialize(connectionID, commandData)
+        rawSqlite3.Database.serialize(connectionID, callback)
       );
     }
   }
@@ -252,49 +249,6 @@ export class Database implements SQLite3Database {
   }
   eventNames(): (string | symbol)[] {
     throw new Error("Method not implemented.");
-  }
-}
-
-class SerializedConn {
-  commandData: any[] = [];
-  run(
-    sql: string,
-    callback?: ((this: RunResult, err: Error | null) => void) | undefined
-  ): this;
-  run(
-    sql: string,
-    params: any,
-    callback?: ((this: RunResult, err: Error | null) => void) | undefined
-  ): this;
-  run(sql: string, ...params: any[]): this;
-  run(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
-    const args = [sql, params, callback, ...rest].filter(
-      (item) => item !== undefined
-    );
-    this.commandData.push(args);
-    return this;
-  }
-
-  get(
-    sql: string,
-    callback?:
-      | ((this: Statement, err: Error | null, row: any) => void)
-      | undefined
-  ): this;
-  get(
-    sql: string,
-    params: any,
-    callback?:
-      | ((this: Statement, err: Error | null, row: any) => void)
-      | undefined
-  ): this;
-  get(sql: string, ...params: any[]): this;
-  get(sql: string, params?: unknown, callback?: any, ...rest: unknown[]): this {
-    const args = [sql, params, callback, ...rest].filter(
-      (item) => item !== undefined
-    );
-    this.commandData.push(args);
-    return this;
   }
 }
 

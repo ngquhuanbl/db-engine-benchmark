@@ -95,13 +95,14 @@ class SQLite3 {
     instance.all(...args);
   }
 
-  serialize(connectionID, commandData) {
+  serialize(connectionID, callback) {
     const instance = this.getConnectionInstance(connectionID);
-    instance.serialize(() => {
-      commandData.forEach((args) => {
-        instance.run(...args);
-      });
-    });
+    instance.serialize(() => callback({
+		run: instance.run.bind(instance),
+		get: instance.get.bind(instance),
+		exec: instance.exec.bind(instance),
+		all: instance.all.bind(instance),
+	}));
   }
 }
 
