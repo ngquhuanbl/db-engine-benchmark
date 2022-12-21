@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
+  Button,
   Container,
   Flex,
   FormControl,
@@ -18,17 +19,27 @@ import {
 import { Data } from "./types/data";
 import { generateData } from "./helpers/generate-data";
 import { LogObj } from "./types/logs";
-import { DEFAULT_DATASET_SIZE } from "./constants/dataset";
+import { DEFAULT_DATASET_SIZE, MIN_DATASET_SIZE } from "./constants/dataset";
 import SingleReadWriteTable from "./components/SingleReadWriteTable";
 import ReadByRangeTable from "./components/ReadByRangeTable";
+import ReadAllTable from "./components/ReadAllTable";
+import { loadData } from "./helpers/indexedDB/load-data";
+import { RepeatIcon } from "@chakra-ui/icons";
+import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
 
 let logIdCounter = 0;
 
 function App() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const datasetRef = useRef<Array<Data>>([]);
+  const [datasetSize, setDatasetSize] = useState(DEFAULT_DATASET_SIZE);
+  const [dataset, setDataset] = useState<Data[]>([]);
+
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
   const [logs, setLogs] = useState<Array<LogObj>>([]);
+
+  const handleDatasetSizeChange = useCallback((size) => {
+    setDatasetSize(size);
+  }, []);
 
   const addLog = useCallback((content: string) => {
     const id = logIdCounter++;
@@ -43,19 +54,29 @@ function App() {
     );
   }, []);
 
-  const getDataset = useCallback(() => {
-    const newDatasetSize = inputRef.current ? +inputRef.current.value : 0;
-
-    const existedDatasetSize = datasetRef.current.length;
-
-    if (newDatasetSize !== existedDatasetSize) {
-      const logId = addLog("[common] Generate data ...");
-      // Generate new dataset
-      datasetRef.current = generateData(newDatasetSize);
+  const generateDataset = useCallback(async () => {
+    const logId = addLog("[common] Generate data ...");
+    setIsLoadingData(true);
+    // Generate new dataset
+    setTimeout(() => {
+      const newDataset = generateData(datasetSize);
+      setDataset(newDataset);
       removeLog(logId);
-    }
-    return datasetRef.current;
-  }, [addLog, removeLog]);
+      setIsLoadingData(false);
+    });
+  }, [addLog, removeLog, datasetSize]);
+
+  useEffect(() => {
+    setIsLoadingData(true);
+    loadData().then((data) => {
+      const size = data.length;
+      if (size > 0) {
+        setDatasetSize(size);
+        setDataset(data);
+      }
+      setIsLoadingData(false);
+    });
+  }, []);
 
   return (
     <Container
@@ -72,37 +93,58 @@ function App() {
           🧪
         </span>
       </Heading>
+      <FormControl display="flex" alignItems="center" marginBottom={8}>
+        <FormLabel margin="0" marginRight="4">
+          Dataset size (n):
+        </FormLabel>
+        <NumberInput
+          min={MIN_DATASET_SIZE}
+          flexGrow={1}
+          value={datasetSize}
+          onChange={handleDatasetSizeChange}
+          isDisabled={isLoadingData}
+        >
+          <NumberInputField />
+          <NumberInputStepper>
+            <NumberIncrementStepper />
+            <NumberDecrementStepper />
+          </NumberInputStepper>
+        </NumberInput>
+        <Button
+          isLoading={isLoadingData}
+          colorScheme="orange"
+          leftIcon={<RepeatIcon />}
+          onClick={generateDataset}
+          marginLeft={8}
+        >
+          Generate
+        </Button>
+      </FormControl>
       <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={4}>
         <GridItem colStart={0} colEnd={1}>
-          <FormControl display="flex" alignItems="center">
-            <FormLabel margin="0" marginRight="4">
-              Dataset size (n):
-            </FormLabel>
-            <NumberInput
-              min={1}
-              defaultValue={DEFAULT_DATASET_SIZE}
-              flexGrow={1}
-            >
-              <NumberInputField ref={inputRef} />
-              <NumberInputStepper>
-                <NumberIncrementStepper />
-                <NumberDecrementStepper />
-              </NumberInputStepper>
-            </NumberInput>
-          </FormControl>
-        </GridItem>
-        <GridItem colStart={0} colEnd={1}>
-          <Heading size="sm">Single read write</Heading>
           <SingleReadWriteTable
-            getDataset={getDataset}
+            dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />
         </GridItem>
         <GridItem colStart={0} colEnd={1}>
-          <Heading size="sm">Read by range</Heading>
           <ReadByRangeTable
-            getDataset={getDataset}
+            dataset={dataset}
+            addLog={addLog}
+            removeLog={removeLog}
+          />
+        </GridItem>
+        <GridItem colStart={1} colEnd={2} rowStart={1}>
+          <ReadAllTable
+            dataset={dataset}
+            addLog={addLog}
+            removeLog={removeLog}
+          />
+        </GridItem>
+        <GridItem colStart={1} colEnd={2} rowStart={2}>
+          <ReadFromTheEndOfSourceDataTable
+            dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />

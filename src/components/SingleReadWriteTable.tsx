@@ -12,6 +12,7 @@ import {
   IconButton,
   Text,
   useToast,
+  Heading,
 } from "@chakra-ui/react";
 import React, { useCallback, useState } from "react";
 import { Data } from "../types/data";
@@ -21,12 +22,14 @@ import { singleReadWrite as executeSQLite } from "../helpers/sqlite/actions";
 import { convertMsToS } from "../helpers/convert";
 
 interface Props {
-  getDataset(): Array<Data>;
+  dataset: Array<Data>;
   addLog(content: string): number;
   removeLog(logId: number): void;
 }
 
-const formatResult = (result: SingleReadWriteResult): SingleReadWriteResult => ({
+const formatResult = (
+  result: SingleReadWriteResult
+): SingleReadWriteResult => ({
   nTransactionRead: convertMsToS(result.nTransactionRead),
   nTransactionWrite: convertMsToS(result.nTransactionWrite),
   oneTransactionRead: convertMsToS(result.oneTransactionRead),
@@ -34,12 +37,14 @@ const formatResult = (result: SingleReadWriteResult): SingleReadWriteResult => (
 });
 
 const SingleReadWriteTable: React.FC<Props> = ({
-  getDataset,
+  dataset,
   addLog,
   removeLog,
 }) => {
-  const [indexedDBResult, setIndexedDBResult] = useState<SingleReadWriteResult | null>(null);
-  const [sqliteResult, setSQLiteResult] = useState<SingleReadWriteResult | null>(null);
+  const [indexedDBResult, setIndexedDBResult] =
+    useState<SingleReadWriteResult | null>(null);
+  const [sqliteResult, setSQLiteResult] =
+    useState<SingleReadWriteResult | null>(null);
 
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
   const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
@@ -50,7 +55,6 @@ const SingleReadWriteTable: React.FC<Props> = ({
     setIsIndexedDBRunning(true);
 
     setTimeout(() => {
-      const dataset = getDataset();
       executeIndexedDB(dataset, addLog, removeLog)
         .then((result) => {
           setIndexedDBResult(formatResult(result));
@@ -67,11 +71,10 @@ const SingleReadWriteTable: React.FC<Props> = ({
           setIsIndexedDBRunning(false);
         });
     });
-  }, [getDataset, toast, addLog, removeLog]);
+  }, [dataset, toast, addLog, removeLog]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
-    const dataset = getDataset();
 
     executeSQLite(dataset, addLog, removeLog)
       .then((result) => {
@@ -88,123 +91,126 @@ const SingleReadWriteTable: React.FC<Props> = ({
       .finally(() => {
         setIsSQLiteRunning(false);
       });
-  }, [getDataset, toast, addLog, removeLog]);
+  }, [dataset, toast, addLog, removeLog]);
 
   return (
-    <TableContainer w="100%">
-      <Table variant="simple">
-        <TableCaption>
-          Unit of measurement is <Text as="b">second</Text>.
-        </TableCaption>
-        <Thead>
-          <Tr>
-            <Th rowSpan={2} width={270}>
-              DB Engine
-            </Th>
-            <Th colSpan={2} textAlign="center">
-              n transaction
-            </Th>
-            <Th colSpan={2} textAlign="center">
-              1 transaction
-            </Th>
-          </Tr>
-          <Tr>
-            <Th textAlign="center">Read</Th>
-            <Th textAlign="center">Write</Th>
-            <Th textAlign="center">Read</Th>
-            <Th textAlign="center">Write</Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          <Tr>
-            <Td>
-              <Flex justifyContent={"space-between"} alignItems="center">
-                <Text>IndexedDB</Text>
-                <IconButton
-                  colorScheme="teal"
-                  icon={<ArrowRightIcon />}
-                  size="sm"
-                  isLoading={isIndexedDBRunning}
-                  aria-label={"run IndexedDB"}
-                  onClick={runIndexedDB}
-                />
-              </Flex>
-            </Td>
-            {isIndexedDBRunning ? (
-              <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
-                Running...
+    <Flex direction="column" gap={8}>
+      <Heading size="sm">Single read write</Heading>
+      <TableContainer w="100%">
+        <Table variant="simple">
+          <TableCaption>
+            Unit of measurement is <Text as="b">second</Text>.
+          </TableCaption>
+          <Thead>
+            <Tr>
+              <Th rowSpan={2} width={270}>
+                DB Engine
+              </Th>
+              <Th colSpan={2} textAlign="center">
+                n transaction
+              </Th>
+              <Th colSpan={2} textAlign="center">
+                1 transaction
+              </Th>
+            </Tr>
+            <Tr>
+              <Th textAlign="center">Read</Th>
+              <Th textAlign="center">Write</Th>
+              <Th textAlign="center">Read</Th>
+              <Th textAlign="center">Write</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            <Tr>
+              <Td>
+                <Flex justifyContent={"space-between"} alignItems="center">
+                  <Text>IndexedDB</Text>
+                  <IconButton
+                    colorScheme="teal"
+                    icon={<ArrowRightIcon />}
+                    size="sm"
+                    isLoading={isIndexedDBRunning}
+                    aria-label={"run IndexedDB"}
+                    onClick={runIndexedDB}
+                  />
+                </Flex>
               </Td>
-            ) : (
-              <>
-                <Td textAlign="center">
-                  {indexedDBResult === null
-                    ? "..."
-                    : indexedDBResult.nTransactionRead}
+              {isIndexedDBRunning ? (
+                <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
+                  Running...
                 </Td>
-                <Td textAlign="center">
-                  {indexedDBResult === null
-                    ? "..."
-                    : indexedDBResult.nTransactionWrite}
-                </Td>
-                <Td textAlign="center">
-                  {indexedDBResult === null
-                    ? "..."
-                    : indexedDBResult.oneTransactionRead}
-                </Td>
-                <Td textAlign="center">
-                  {indexedDBResult === null
-                    ? "..."
-                    : indexedDBResult.oneTransactionWrite}
-                </Td>
-              </>
-            )}
-          </Tr>
-          <Tr>
-            <Td>
-              <Flex justifyContent={"space-between"} alignItems="center">
-                <Text>SQLite</Text>
-                <IconButton
-                  colorScheme="teal"
-                  icon={<ArrowRightIcon />}
-                  size="sm"
-                  isLoading={isSQLiteRunning}
-                  aria-label={"run SQLite"}
-                  onClick={runSQLite}
-                />
-              </Flex>
-            </Td>
-            {isSQLiteRunning ? (
-              <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
-                Running...
+              ) : (
+                <>
+                  <Td textAlign="center">
+                    {indexedDBResult === null
+                      ? "..."
+                      : indexedDBResult.nTransactionRead}
+                  </Td>
+                  <Td textAlign="center">
+                    {indexedDBResult === null
+                      ? "..."
+                      : indexedDBResult.nTransactionWrite}
+                  </Td>
+                  <Td textAlign="center">
+                    {indexedDBResult === null
+                      ? "..."
+                      : indexedDBResult.oneTransactionRead}
+                  </Td>
+                  <Td textAlign="center">
+                    {indexedDBResult === null
+                      ? "..."
+                      : indexedDBResult.oneTransactionWrite}
+                  </Td>
+                </>
+              )}
+            </Tr>
+            <Tr>
+              <Td>
+                <Flex justifyContent={"space-between"} alignItems="center">
+                  <Text>SQLite</Text>
+                  <IconButton
+                    colorScheme="teal"
+                    icon={<ArrowRightIcon />}
+                    size="sm"
+                    isLoading={isSQLiteRunning}
+                    aria-label={"run SQLite"}
+                    onClick={runSQLite}
+                  />
+                </Flex>
               </Td>
-            ) : (
-              <>
-                <Td textAlign="center">
-                  {sqliteResult === null
-                    ? "..."
-                    : sqliteResult.nTransactionRead}
+              {isSQLiteRunning ? (
+                <Td backgroundColor="gray.100" colSpan={4} textAlign="center">
+                  Running...
                 </Td>
-                <Td textAlign="center">
-                  {sqliteResult === null
-                    ? "..."
-                    : sqliteResult.nTransactionWrite}
-                </Td>
-                <Td textAlign="center">
-                  {sqliteResult === null
-                    ? "..."
-                    : sqliteResult.oneTransactionRead}
-                </Td>
-                <Td textAlign="center">
-                  {sqliteResult === null
-                    ? "..."
-                    : sqliteResult.oneTransactionWrite}
-                </Td>
-              </>
-            )}
-          </Tr>
-        </Tbody>
-      </Table>
-    </TableContainer>
+              ) : (
+                <>
+                  <Td textAlign="center">
+                    {sqliteResult === null
+                      ? "..."
+                      : sqliteResult.nTransactionRead}
+                  </Td>
+                  <Td textAlign="center">
+                    {sqliteResult === null
+                      ? "..."
+                      : sqliteResult.nTransactionWrite}
+                  </Td>
+                  <Td textAlign="center">
+                    {sqliteResult === null
+                      ? "..."
+                      : sqliteResult.oneTransactionRead}
+                  </Td>
+                  <Td textAlign="center">
+                    {sqliteResult === null
+                      ? "..."
+                      : sqliteResult.oneTransactionWrite}
+                  </Td>
+                </>
+              )}
+            </Tr>
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Flex>
   );
 };
 

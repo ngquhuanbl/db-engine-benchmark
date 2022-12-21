@@ -6,10 +6,22 @@ export interface SingleReadWriteResult {
 }
 
 export interface ReadByRangeResult {
-	nTransactionStartRange: number;
-	nTransactionMiddleRange: number;
-	nTransactionEndRange: number;
-	oneTransactionStartRange: number;
-	oneTransactionMiddleRange: number;
-	oneTransactionEndRange: number;
+	nTransactionAverage: number;
+	nTransactionSum: number;
+	oneTransactionAverage: number;
+	oneTransactionSum: number;
+}
+
+export interface ReadAllResult {
+	nTransactionAverage: number;
+	nTransactionSum: number;
+	oneTransactionAverage: number;
+	oneTransactionSum: number;
+}
+
+export interface ReadFromTheEndOfSourceDataResult {
+	nTransactionAverage: number;
+	nTransactionSum: number;
+	oneTransactionAverage: number;
+	oneTransactionSum: number;
 }

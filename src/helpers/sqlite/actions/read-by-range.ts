@@ -1,333 +1,182 @@
 import { PRIMARY_KEYS, TABLE_NAME } from "../../../constants/schema";
-import { Action } from "../../../types/action";
+import { Action, ReadByRangeExtraData } from "../../../types/action";
 import { ReadByRangeResult } from "../../../types/result";
-import { calculateRange } from "../../calculate-range";
-import { checkChecksum } from "../../check-checksum";
 import { escapeStr } from "../../escape-str";
 import { patchJSError } from "../../patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute: Action<ReadByRangeResult> = async (
+export const execute: Action<ReadByRangeResult, ReadByRangeExtraData> = async (
   data,
   addLog,
-  removeLog
+  removeLog,
+  { ranges } = { ranges: [] }
 ) => {
+  const numOfRanges = ranges.length;
+
   const conn = await openSQLiteDatabase();
 
-  const [startRange, middleRange, endRange] = calculateRange(data.length);
-
-  let nTransactionStartRange = -1;
-  let nTransactionMiddleRange = -1;
-  let nTransactionEndRange = -1;
-  let oneTransactionStartRange = -1;
-  let oneTransactionMiddleRange = -1;
-  let oneTransactionEndRange = -1;
-
-  let startRangeChecksum = 0;
-  let middleRangeChecksum = 0;
-  let endRangeChecksum = 0;
+  let nTransactionAverage = -1;
+  let nTransactionSum = -1;
+  let oneTransactionAverage = -1;
+  let oneTransactionSum = -1;
 
   //#region n transaction
   {
-    const logId = addLog("[sqlite][read-by-range][n-transaction] start range");
-    const { from, to } = startRange;
-    const params: any[] = [from, to];
-    const primaryKeyConditions: string[] = [];
-    PRIMARY_KEYS.forEach((key) => {
-      primaryKeyConditions.push(
-        `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-      );
-    });
-    const query = `SELECT * FROM ${escapeStr(
-      TABLE_NAME
-    )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-    let start = performance.now();
-	let end = -1;
-    startRangeChecksum = await new Promise<number>((resolve, reject) => {
-      conn.all(query, params, (error, rows) => {
-        if (error)
-          reject(
-            patchJSError(error, {
-              tags: ["sqlite", "read-by-range", "n-transaction", "start range"],
-            })
-          );
-        else {
-			end = performance.now();
-			resolve(rows.length);
-		}
+    const requests = ranges.map(({ from, to }, index) => {
+      const params: any[] = [from, to];
+      const primaryKeyConditions: string[] = [];
+      PRIMARY_KEYS.forEach((key) => {
+        primaryKeyConditions.push(
+          `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
+        );
+      });
+      const query = `SELECT * FROM ${escapeStr(
+        TABLE_NAME
+      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+      return new Promise<number>((resolve, reject) => {
+        const logId = addLog(
+          `[sqlite][read-by-range][n-transaction] range ${index}`
+        );
+        const start = performance.now();
+        conn.all(query, params, (error, rows) => {
+          if (error)
+            reject(
+              patchJSError(error, {
+                tags: [
+                  "sqlite",
+                  "read-by-range",
+                  "n-transaction",
+                  `range ${index}`,
+                ],
+              })
+            );
+          else {
+            const end = performance.now();
+            const resultLength = rows.length;
+            const size = +to - +from + 1;
+            if (size !== resultLength) {
+              console.error(
+                `[sqlite][read-by-range][n-transaction] range ${index} - unmatched checksum`,
+                {
+                  from,
+                  to,
+                  resultLength,
+                  size,
+                }
+              );
+            }
+            resolve(end - start);
+          }
+          removeLog(logId);
+        });
       });
     });
-    
-    removeLog(logId);
-    nTransactionStartRange = end - start;
-  }
-
-  {
-    const logId = addLog("[sqlite][read-by-range][n-transaction] middle range");
-    const { from, to } = middleRange;
-    const params: any[] = [from, to];
-    const primaryKeyConditions: string[] = [];
-    PRIMARY_KEYS.forEach((key) => {
-      primaryKeyConditions.push(
-        `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-      );
-    });
-    const query = `SELECT * FROM ${escapeStr(
-      TABLE_NAME
-    )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-    let start = performance.now();
-	let end = -1;
-    middleRangeChecksum = await new Promise<number>((resolve, reject) => {
-      conn.all(query, params, (error, rows) => {
-        if (error)
-          reject(
-            patchJSError(error, {
-              tags: [
-                "sqlite",
-                "read-by-range",
-                "n-transaction",
-                "middle range",
-              ],
-            })
-          );
-        else {
-			end = performance.now();
-			resolve(rows.length);
-		}
-      });
-    });
-    removeLog(logId);
-    nTransactionMiddleRange = end - start;
-  }
-
-  {
-    const logId = addLog("[sqlite][read-by-range][n-transaction] end range");
-    const { from, to } = endRange;
-    const params: any[] = [from, to];
-    const primaryKeyConditions: string[] = [];
-    PRIMARY_KEYS.forEach((key) => {
-      primaryKeyConditions.push(
-        `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-      );
-    });
-    const query = `SELECT * FROM ${escapeStr(
-      TABLE_NAME
-    )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-    let start = performance.now();
-	let end = -1;
-    endRangeChecksum = await new Promise<number>((resolve, reject) => {
-      conn.all(query, params, (error, rows) => {
-        if (error)
-          reject(
-            patchJSError(error, {
-              tags: ["sqlite", "read-by-range", "n-transaction", "end range"],
-            })
-          );
-        else {
-			end = performance.now();
-			resolve(rows.length);
-		}
-      });
-    });
-    removeLog(logId);
-    nTransactionEndRange = end - start;
+    const results = await Promise.all(requests);
+    nTransactionSum = results.reduce((result, current) => result + current, 0);
+    nTransactionAverage = nTransactionSum / numOfRanges;
   }
   //#endregion
-
-  // Check checksum
-  if (
-    !checkChecksum(
-      [startRangeChecksum, middleRangeChecksum, endRangeChecksum],
-      data.length
-    )
-  ) {
-    const checksum =
-      startRangeChecksum + middleRangeChecksum + endRangeChecksum;
-    console.error(`[sqlite][read-by-range][n-transaction] unmatched checksum`, {
-      checksum,
-      datasetSize: data.length,
-      startRangeChecksum,
-      middleRangeChecksum,
-      endRangeChecksum,
-    });
-  }
-
-  // Reset checksum
-  startRangeChecksum = 0;
-  middleRangeChecksum = 0;
-  endRangeChecksum = 0;
 
   //#region one transaction
-  await new Promise<void>((resolve, reject) => {
-    conn.serialize((conn) => {
-      conn.run("BEGIN TRANSACTION", (error) => {
-        if (error)
-          reject(
-            patchJSError(error, {
-              tags: [
-                "sqlite",
-                "read-by-range",
-                "1-transaction",
-                "3 ranges",
-                "begin-transaction",
-              ],
-            })
-          );
-      });
-
-      {
-        const { from, to } = startRange;
-        const params: any[] = [from, to];
-        const primaryKeyConditions: string[] = [];
-        PRIMARY_KEYS.forEach((key) => {
-          primaryKeyConditions.push(
-            `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-          );
-        });
-        const query = `SELECT * FROM ${escapeStr(
-          TABLE_NAME
-        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-        const logId = addLog(
-          "[sqlite][read-by-range][one-transaction] start range"
-        );
-        let start = performance.now();
-        conn.all(query, params, (error, rows) => {
-          if (error) {
+  {
+    const results: number[] = [];
+    await new Promise<void>((resolve, reject) => {
+      conn.serialize((conn) => {
+        conn.run("BEGIN TRANSACTION", (error) => {
+          if (error)
             reject(
               patchJSError(error, {
                 tags: [
                   "sqlite",
                   "read-by-range",
                   "1-transaction",
-                  "start range",
+                  "begin-transaction",
                 ],
               })
             );
-          } else {
-            startRangeChecksum = rows.length;
-            let end = performance.now();
-            oneTransactionStartRange = end - start;
-          }
-          removeLog(logId);
         });
-      }
 
-      {
-        const { from, to } = middleRange;
-        const params: any[] = [from, to];
-        const primaryKeyConditions: string[] = [];
-        PRIMARY_KEYS.forEach((key) => {
-          primaryKeyConditions.push(
-            `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
+        for (let index = 0; index < numOfRanges; index += 1) {
+          const { from, to } = ranges[index];
+          const params: any[] = [from, to];
+          const primaryKeyConditions: string[] = [];
+          PRIMARY_KEYS.forEach((key) => {
+            primaryKeyConditions.push(
+              `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
+            );
+          });
+          const query = `SELECT * FROM ${escapeStr(
+            TABLE_NAME
+          )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+          const logId = addLog(
+            `[sqlite][read-by-range][one-transaction] range ${index}`
           );
-        });
-        const query = `SELECT * FROM ${escapeStr(
-          TABLE_NAME
-        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-        const logId = addLog(
-          "[sqlite][read-by-range][one-transaction] middle range"
-        );
-        let start = performance.now();
-        conn.all(query, params, (error, rows) => {
-          if (error) {
+          const start = performance.now();
+          conn.all(query, params, (error, rows) => {
+            if (error) {
+              reject(
+                patchJSError(error, {
+                  tags: [
+                    "sqlite",
+                    "read-by-range",
+                    "1-transaction",
+                    `range ${index}`,
+                  ],
+                })
+              );
+            } else {
+              const end = performance.now();
+              const resultLength = rows.length;
+              const size = +to - +from + 1;
+              if (size !== resultLength) {
+                console.error(
+                  `[sqlite][read-by-range][1-transaction] range ${index} - unmatched checksum`,
+                  {
+                    from,
+                    to,
+                    resultLength,
+                    size,
+                  }
+                );
+              }
+              results.push(end - start);
+            }
+            removeLog(logId);
+          });
+        }
+
+        conn.run("COMMIT TRANSACTION", (error) => {
+          if (error)
             reject(
               patchJSError(error, {
                 tags: [
                   "sqlite",
                   "read-by-range",
                   "1-transaction",
-                  "middle range",
+                  "commit-transaction",
                 ],
               })
             );
-          } else {
-            middleRangeChecksum = rows.length;
-            let end = performance.now();
-            oneTransactionMiddleRange = end - start;
-          }
-          removeLog(logId);
+          else resolve();
         });
-      }
-
-      {
-        const { from, to } = endRange;
-        const params: any[] = [from, to];
-        const primaryKeyConditions: string[] = [];
-        PRIMARY_KEYS.forEach((key) => {
-          primaryKeyConditions.push(
-            `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-          );
-        });
-        const query = `SELECT * FROM ${escapeStr(
-          TABLE_NAME
-        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-        const logId = addLog(
-          "[sqlite][read-by-range][one-transaction] end range"
-        );
-        let start = performance.now();
-        conn.all(query, params, (error, rows) => {
-          if (error) {
-            reject(
-              patchJSError(error, {
-                tags: ["sqlite", "read-by-range", "1-transaction", "end range"],
-              })
-            );
-          } else {
-            endRangeChecksum = rows.length;
-            let end = performance.now();
-            oneTransactionEndRange = end - start;
-          }
-          removeLog(logId);
-        });
-      }
-
-      conn.run("COMMIT TRANSACTION", (error) => {
-        if (error)
-          reject(
-            patchJSError(error, {
-              tags: [
-                "sqlite",
-                "read-by-range",
-                "1-transaction",
-                "3 ranges",
-                "commit-transaction",
-              ],
-            })
-          );
-        else resolve();
       });
     });
-  });
-  //#endregion
-
-  // Check checksum
-  if (
-    !checkChecksum(
-      [startRangeChecksum, middleRangeChecksum, endRangeChecksum],
-      data.length
-    )
-  ) {
-    const checksum =
-      startRangeChecksum + middleRangeChecksum + endRangeChecksum;
-    console.error(`[sqlite][read-by-range][1-transaction] unmatched checksum`, {
-      checksum,
-      datasetSize: data.length,
-      startRangeChecksum,
-      middleRangeChecksum,
-      endRangeChecksum,
-    });
+    oneTransactionSum = results.reduce(
+      (result, current) => result + current,
+      0
+    );
+    oneTransactionAverage = oneTransactionSum / numOfRanges;
   }
+  //#endregion
 
   conn.close((error) => {
     if (error) throw error;
   });
-  
+
   return {
-    nTransactionStartRange,
-    nTransactionMiddleRange,
-    nTransactionEndRange,
-    oneTransactionStartRange,
-    oneTransactionMiddleRange,
-    oneTransactionEndRange,
+    nTransactionAverage,
+    nTransactionSum,
+    oneTransactionAverage,
+    oneTransactionSum,
   };
 };
