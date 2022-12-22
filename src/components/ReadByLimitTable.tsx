@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Data } from "../types/data";
 import { ReadAllResult } from "../types/result";
 import { readByLimit as executeIndexedDB } from "../helpers/indexedDB/actions";
@@ -33,6 +33,8 @@ import {
   MIN_LIMIT,
   MIN_READ_BY_LIMIT_COUNT,
 } from "../constants/dataset";
+import { READ_BY_LIMIT_ORDER } from "../constants/run-all";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
 
 const formatResult = (result: ReadAllResult): ReadAllResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -72,32 +74,30 @@ const ReadByLimitTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, {
-        count: readCount,
-        limit,
+    return executeIndexedDB(dataset, addLog, removeLog, {
+      count: readCount,
+      limit,
+    })
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
       })
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog, readCount, limit]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, {
+    return executeSQLite(dataset, addLog, removeLog, {
       count: readCount,
       limit,
     })
@@ -116,6 +116,19 @@ const ReadByLimitTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
         setIsSQLiteRunning(false);
       });
   }, [dataset, toast, addLog, removeLog, readCount, limit]);
+
+  useEffect(() => {
+    listenToRunAllEvent(READ_BY_LIMIT_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+  
+  useEffect(() => {
+    listenToGetAllEvent("read-by-limit", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
 
   return (
     <Flex direction="column" h="100%">
@@ -140,7 +153,12 @@ const ReadByLimitTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
             </NumberInputStepper>
           </NumberInput>
         </FormControl>
-        <FormControl display="flex" alignItems="center" marginBottom={2} marginLeft={4}>
+        <FormControl
+          display="flex"
+          alignItems="center"
+          marginBottom={2}
+          marginLeft={4}
+        >
           <FormLabel margin="0" marginRight="4">
             Read count (m):
           </FormLabel>

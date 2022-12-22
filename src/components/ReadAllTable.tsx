@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Data } from "../types/data";
 import { ReadAllResult } from "../types/result";
 import { readAll as executeIndexedDB } from "../helpers/indexedDB/actions";
@@ -31,6 +31,8 @@ import {
   DEFAULT_READ_ALL_COUNT,
   MIN_READ_ALL_COUNT,
 } from "../constants/dataset";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
+import { READ_ALL_ORDER } from "../constants/run-all";
 
 const formatResult = (result: ReadAllResult): ReadAllResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -64,29 +66,27 @@ const ReadAllTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, { readAllCount })
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+    return executeIndexedDB(dataset, addLog, removeLog, { readAllCount })
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
+      })
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog, readAllCount]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, { readAllCount })
+    return executeSQLite(dataset, addLog, removeLog, { readAllCount })
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -103,9 +103,24 @@ const ReadAllTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       });
   }, [dataset, toast, addLog, removeLog, readAllCount]);
 
+  useEffect(() => {
+    listenToRunAllEvent(READ_ALL_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+
+  useEffect(() => {
+    listenToGetAllEvent("read-all", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
+
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Read all</Heading>
+      <Heading size="sm" marginBottom={4}>
+        Read all
+      </Heading>
       <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
           Read count (m):

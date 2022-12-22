@@ -1,12 +1,21 @@
-import { DB_NAME, INDEXED_KEYS, INDEX_NAME, PRIMARY_KEYS, TABLE_NAME } from "../../constants/schema";
+import {
+  DB_NAME,
+  INDEXED_KEYS,
+  INDEX_NAME,
+  PRIMARY_KEYS,
+  TABLE_NAME,
+} from "../../constants/schema";
+import { firstOrArray } from "../firstOrArray";
 
 export async function openIndexdDBDatabase(): Promise<IDBDatabase> {
   const openReq = indexedDB.open(DB_NAME);
   return new Promise<IDBDatabase>((resolve, reject) => {
     openReq.onupgradeneeded = function () {
       const dbInstance = openReq.result;
-      const objectStore = dbInstance.createObjectStore(TABLE_NAME, { keyPath: PRIMARY_KEYS });
-	  objectStore.createIndex(INDEX_NAME, INDEXED_KEYS)
+      const objectStore = dbInstance.createObjectStore(TABLE_NAME, {
+        keyPath: firstOrArray(PRIMARY_KEYS),
+      });
+      objectStore.createIndex(INDEX_NAME, firstOrArray(INDEXED_KEYS));
     };
     openReq.onsuccess = function () {
       resolve(openReq.result);
@@ -17,7 +26,7 @@ export async function openIndexdDBDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function resetIndexedDBData(dbInstance: IDBDatabase, ) {
+export async function resetIndexedDBData(dbInstance: IDBDatabase) {
   const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
   const objectStore = transaction.objectStore(TABLE_NAME);
   const clearReq = objectStore.clear();
@@ -28,5 +37,5 @@ export async function resetIndexedDBData(dbInstance: IDBDatabase, ) {
     clearReq.onerror = function () {
       reject(clearReq.error);
     };
-  })
+  });
 }

@@ -14,6 +14,7 @@ import {
   NumberInputField,
   NumberInputStepper,
   Text,
+  useToast,
 } from "@chakra-ui/react";
 
 import { Data } from "./types/data";
@@ -28,6 +29,7 @@ import { RepeatIcon } from "@chakra-ui/icons";
 import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
 import ReadByIndexTable from "./components/ReadByIndexTable";
 import ReadByLimitTable from "./components/ReadByLimitTable";
+import { triggerGetAllEvent, triggerRunAllEvent } from "./helpers/events";
 
 let logIdCounter = 0;
 
@@ -36,8 +38,11 @@ function App() {
   const [dataset, setDataset] = useState<Data[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isRunningAll, setIsRunningAll] = useState(false);
 
   const [logs, setLogs] = useState<Array<LogObj>>([]);
+
+  const toast = useToast();
 
   const handleDatasetSizeChange = useCallback((size) => {
     setDatasetSize(size);
@@ -68,6 +73,20 @@ function App() {
     });
   }, [addLog, removeLog, datasetSize]);
 
+  const getAllResult = useCallback(() => {
+    const res = triggerGetAllEvent();
+    navigator.clipboard.writeText(JSON.stringify(res));
+    toast({
+      title: "JSON result is copied! 📄",
+      status: "info",
+    });
+  }, [toast]);
+
+  const runAll = useCallback(() => {
+    setIsRunningAll(true);
+    triggerRunAllEvent().finally(() => setIsRunningAll(false));
+  }, []);
+
   useEffect(() => {
     setIsLoadingData(true);
     loadData().then((data) => {
@@ -95,7 +114,7 @@ function App() {
           🧪
         </span>
       </Heading>
-      <FormControl display="flex" alignItems="center" marginBottom={8}>
+      <FormControl display="flex" alignItems="center" marginBottom={4}>
         <FormLabel margin="0" marginRight="4">
           Dataset size (n):
         </FormLabel>
@@ -122,6 +141,12 @@ function App() {
           Generate
         </Button>
       </FormControl>
+      <Flex marginBottom={4}>
+        <Button onClick={runAll} marginRight={4} isLoading={isRunningAll}>
+          Run all 🔥
+        </Button>
+        <Button onClick={getAllResult}>Get JSON result 📄</Button>
+      </Flex>
       <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
         <GridItem>
           <SingleReadWriteTable

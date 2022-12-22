@@ -17,8 +17,6 @@ export const execute: Action<ReadByLimitResult, ReadByLimitExtraData> = async (
     count: DEFAULT_READ_BY_LIMIT_COUNT,
   }
 ) => {
-  const datasetSize = data.length;
-
   const dbInstance = await openIndexdDBDatabase();
 
   let nTransactionAverage = -1;

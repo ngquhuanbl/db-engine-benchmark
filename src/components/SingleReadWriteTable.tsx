@@ -14,12 +14,14 @@ import {
   useToast,
   Heading,
 } from "@chakra-ui/react";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Data } from "../types/data";
 import { SingleReadWriteResult } from "../types/result";
 import { singleReadWrite as executeIndexedDB } from "../helpers/indexedDB/actions";
 import { singleReadWrite as executeSQLite } from "../helpers/sqlite/actions";
 import { convertMsToS } from "../helpers/convert";
+import { SINGLE_READ_WRITE_ORDER } from "../constants/run-all";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
 
 interface Props {
   dataset: Array<Data>;
@@ -54,29 +56,27 @@ const SingleReadWriteTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog)
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+    return executeIndexedDB(dataset, addLog, removeLog)
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
+      })
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog)
+    return executeSQLite(dataset, addLog, removeLog)
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -93,9 +93,24 @@ const SingleReadWriteTable: React.FC<Props> = ({
       });
   }, [dataset, toast, addLog, removeLog]);
 
+  useEffect(() => {
+    listenToRunAllEvent(SINGLE_READ_WRITE_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+
+  useEffect(() => {
+    listenToGetAllEvent("single-read-write", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
+
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Single read write</Heading>
+      <Heading size="sm" marginBottom={4}>
+        Single read write
+      </Heading>
       <TableContainer w="100%" height="285px" marginTop="auto">
         <Table variant="simple">
           <TableCaption>

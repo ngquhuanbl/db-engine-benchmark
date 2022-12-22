@@ -2,7 +2,7 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_READ_BY_LIMIT_COUNT,
 } from "../../../constants/dataset";
-import { PRIMARY_KEYS, TABLE_NAME } from "../../../constants/schema";
+import { TABLE_NAME } from "../../../constants/schema";
 import { Action, ReadByLimitExtraData } from "../../../types/action";
 import { ReadByLimitResult } from "../../../types/result";
 import { escapeStr } from "../../escape-str";
@@ -18,7 +18,6 @@ export const execute: Action<ReadByLimitResult, ReadByLimitExtraData> = async (
     count: DEFAULT_READ_BY_LIMIT_COUNT,
   }
 ) => {
-  const datasetSize = data.length;
   const conn = await openSQLiteDatabase();
 
   let nTransactionAverage = -1;

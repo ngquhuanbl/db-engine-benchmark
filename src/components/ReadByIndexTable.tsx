@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Data } from "../types/data";
 import { ReadByRangeResult } from "../types/result";
 import { readByIndex as executeIndexedDB } from "../helpers/indexedDB/actions";
@@ -32,6 +32,8 @@ import {
   DEFAULT_NUM_OF_INDEXED_KEYS,
 } from "../constants/dataset";
 import { getConvId } from "../helpers/generate-data";
+import { READ_BY_INDEX_ORDER } from "../constants/run-all";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
 
 const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -74,29 +76,27 @@ const ReadByIndexTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, { keys })
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+    return executeIndexedDB(dataset, addLog, removeLog, { keys })
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
+      })
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog, keys]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, { keys })
+    return executeSQLite(dataset, addLog, removeLog, { keys })
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -113,9 +113,24 @@ const ReadByIndexTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       });
   }, [dataset, toast, addLog, removeLog, keys]);
 
+  useEffect(() => {
+    listenToRunAllEvent(READ_BY_INDEX_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+  
+  useEffect(() => {
+    listenToGetAllEvent("read-by-index", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
+
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Read by range</Heading>
+      <Heading size="sm" marginBottom={4}>
+        Read by range
+      </Heading>
       <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
           Num of indexed keys (m):

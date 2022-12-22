@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Data } from "../types/data";
 import { ReadByRangeResult } from "../types/result";
 import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
@@ -29,6 +29,8 @@ import { convertMsToS } from "../helpers/convert";
 import { ArrowRightIcon } from "@chakra-ui/icons";
 import { MIN_NUM_OF_RANGE, DEFAULT_NUM_OF_RANGE } from "../constants/dataset";
 import { calculateRange } from "../helpers/calculate-range";
+import { READ_BY_RANGE_ORDER } from "../constants/run-all";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
 
 const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -68,29 +70,27 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, { ranges })
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+    return executeIndexedDB(dataset, addLog, removeLog, { ranges })
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
+      })
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog, ranges]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, { ranges })
+    return executeSQLite(dataset, addLog, removeLog, { ranges })
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -107,9 +107,24 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       });
   }, [dataset, toast, addLog, removeLog, ranges]);
 
+  useEffect(() => {
+    listenToRunAllEvent(READ_BY_RANGE_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+  
+  useEffect(() => {
+    listenToGetAllEvent("read-by-range", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
+
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Read by range</Heading>
+      <Heading size="sm" marginBottom={4}>
+        Read by range
+      </Heading>
       <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
           Num of ranges (m):

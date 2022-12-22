@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Data } from "../types/data";
 import { ReadAllResult } from "../types/result";
 import { readFromTheEndOfSourceDataCount as executeIndexedDB } from "../helpers/indexedDB/actions";
@@ -31,6 +31,8 @@ import {
   DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
   MIN_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
 } from "../constants/dataset";
+import { READ_FROM_THE_END_OF_SOURCE_MAP_ORDER } from "../constants/run-all";
+import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
 
 const formatResult = (result: ReadAllResult): ReadAllResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -70,31 +72,29 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, {
-        readFromTheEndOfSourceDataCount: readCount,
+    return executeIndexedDB(dataset, addLog, removeLog, {
+      readFromTheEndOfSourceDataCount: readCount,
+    })
+      .then((result) => {
+        setIndexedDBResult(formatResult(result));
       })
-        .then((result) => {
-          setIndexedDBResult(formatResult(result));
-        })
-        .catch((e) => {
-          toast({
-            title: "IndexedDB error",
-            description: e.message,
-            status: "error",
-          });
-          console.error(e);
-        })
-        .finally(() => {
-          setIsIndexedDBRunning(false);
+      .catch((e) => {
+        toast({
+          title: "IndexedDB error",
+          description: e.message,
+          status: "error",
         });
-    });
+        console.error(e);
+      })
+      .finally(() => {
+        setIsIndexedDBRunning(false);
+      });
   }, [dataset, toast, addLog, removeLog, readCount]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, {
+    return executeSQLite(dataset, addLog, removeLog, {
       readFromTheEndOfSourceDataCount: readCount,
     })
       .then((result) => {
@@ -113,9 +113,24 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
       });
   }, [dataset, toast, addLog, removeLog, readCount]);
 
+  useEffect(() => {
+    listenToRunAllEvent(READ_FROM_THE_END_OF_SOURCE_MAP_ORDER, () =>
+      runIndexedDB().then(() => runSQLite())
+    );
+  }, [runIndexedDB, runSQLite]);
+
+  useEffect(() => {
+    listenToGetAllEvent("read-from-end-source", () => ({
+      indexedDB: indexedDBResult,
+      sqlite: sqliteResult,
+    }));
+  }, [indexedDBResult, sqliteResult]);
+
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Read from the end of source data</Heading>
+      <Heading size="sm" marginBottom={4}>
+        Read from the end of source data
+      </Heading>
       <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
           Read count (m):
