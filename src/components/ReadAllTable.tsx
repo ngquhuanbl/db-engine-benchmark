@@ -104,11 +104,11 @@ const ReadAllTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   }, [dataset, toast, addLog, removeLog, readAllCount]);
 
   return (
-    <Flex direction="column" gap={8}>
-      <Heading size="sm">Read all</Heading>
-      <FormControl display="flex" alignItems="center">
+    <Flex direction="column" h="100%">
+      <Heading size="sm" marginBottom={4}>Read all</Heading>
+      <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
-          Read count (f):
+          Read count (m):
         </FormLabel>
         <NumberInput
           min={MIN_READ_ALL_COUNT}
@@ -123,9 +123,11 @@ const ReadAllTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
           </NumberInputStepper>
         </NumberInput>
       </FormControl>
-      <TableContainer w="100%">
+      <TableContainer w="100%" height="285px" marginTop="auto">
         <Table variant="simple">
           <TableCaption>
+            Reading uses the primary key.
+            <br />
             Unit of measurement is <Text as="b">second</Text>.
           </TableCaption>
           <Thead>
@@ -134,17 +136,17 @@ const ReadAllTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
                 DB Engine
               </Th>
               <Th textAlign="center" colSpan={2}>
-                f transaction
+                m transaction
               </Th>
               <Th textAlign="center" colSpan={2}>
                 1 transaction
               </Th>
             </Tr>
             <Tr>
-              <Th textAlign="center">Total</Th>
-              <Th textAlign="center">Average</Th>
-              <Th textAlign="center">Total</Th>
-              <Th textAlign="center">Average</Th>
+              <Th textAlign="center">Read (Total)</Th>
+              <Th textAlign="center">Read (Average)</Th>
+              <Th textAlign="center">Read (Total)</Th>
+              <Th textAlign="center">Read (Average)</Th>
             </Tr>
           </Thead>
           <Tbody>

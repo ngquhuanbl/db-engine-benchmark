@@ -25,3 +25,17 @@ export interface ReadFromTheEndOfSourceDataResult {
 	oneTransactionAverage: number;
 	oneTransactionSum: number;
 }
+
+export interface ReadByIndexResult {
+	nTransactionAverage: number;
+	nTransactionSum: number;
+	oneTransactionAverage: number;
+	oneTransactionSum: number;
+}
+
+export interface ReadByLimitResult {
+	nTransactionAverage: number;
+	nTransactionSum: number;
+	oneTransactionAverage: number;
+	oneTransactionSum: number;
+}

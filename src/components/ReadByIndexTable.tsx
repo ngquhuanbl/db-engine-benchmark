@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Data } from "../types/data";
 import { ReadByRangeResult } from "../types/result";
-import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
-import { readByRange as executeSQLite } from "../helpers/sqlite/actions";
+import { readByIndex as executeIndexedDB } from "../helpers/indexedDB/actions";
+import { readByIndex as executeSQLite } from "../helpers/sqlite/actions";
 import {
   Flex,
   IconButton,
@@ -27,8 +27,11 @@ import {
 } from "@chakra-ui/react";
 import { convertMsToS } from "../helpers/convert";
 import { ArrowRightIcon } from "@chakra-ui/icons";
-import { MIN_NUM_OF_RANGE, DEFAULT_NUM_OF_RANGE } from "../constants/dataset";
-import { calculateRange } from "../helpers/calculate-range";
+import {
+  MIN_NUM_OF_INDEXED_KEYS,
+  DEFAULT_NUM_OF_INDEXED_KEYS,
+} from "../constants/dataset";
+import { getConvId } from "../helpers/generate-data";
 
 const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
@@ -43,8 +46,8 @@ interface Props {
   removeLog(logId: number): void;
 }
 
-const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
-  const [numOfRanges, setNumOfRanges] = useState(DEFAULT_NUM_OF_RANGE);
+const ReadByIndexTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
+  const [numOfKeys, setNumOfKeys] = useState(DEFAULT_NUM_OF_INDEXED_KEYS);
   const [indexedDBResult, setIndexedDBResult] =
     useState<ReadByRangeResult | null>(null);
   const [sqliteResult, setSQLiteResult] = useState<ReadByRangeResult | null>(
@@ -54,22 +57,25 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
   const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
 
-  const ranges = useMemo(() => {
-    const datasetSize = dataset.length;
-    return calculateRange(datasetSize, numOfRanges);
-  }, [dataset, numOfRanges]);
+  const keys = useMemo(() => {
+    const res: string[] = [];
+    for (let i = 0; i < numOfKeys; i += 1) {
+      res.push(getConvId());
+    }
+    return res;
+  }, [numOfKeys]);
 
   const toast = useToast();
 
-  const handleNumOfRangesChange = useCallback((value) => {
-    setNumOfRanges(value);
+  const handleNumOfIndexedKeysChange = useCallback((value) => {
+    setNumOfKeys(value);
   }, []);
 
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
     setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, { ranges })
+      executeIndexedDB(dataset, addLog, removeLog, { keys })
         .then((result) => {
           setIndexedDBResult(formatResult(result));
         })
@@ -85,12 +91,12 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
           setIsIndexedDBRunning(false);
         });
     });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [dataset, toast, addLog, removeLog, keys]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, { ranges })
+    executeSQLite(dataset, addLog, removeLog, { keys })
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -105,20 +111,20 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       .finally(() => {
         setIsSQLiteRunning(false);
       });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [dataset, toast, addLog, removeLog, keys]);
 
   return (
     <Flex direction="column" h="100%">
       <Heading size="sm" marginBottom={4}>Read by range</Heading>
       <FormControl display="flex" alignItems="center" marginBottom={2}>
         <FormLabel margin="0" marginRight="4">
-          Num of ranges (m):
+          Num of indexed keys (m):
         </FormLabel>
         <NumberInput
-          min={MIN_NUM_OF_RANGE}
+          min={MIN_NUM_OF_INDEXED_KEYS}
           flexGrow={1}
-          value={numOfRanges}
-          onChange={handleNumOfRangesChange}
+          value={numOfKeys}
+          onChange={handleNumOfIndexedKeysChange}
         >
           <NumberInputField />
           <NumberInputStepper>
@@ -130,7 +136,8 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       <TableContainer w="100%" height="285px" marginTop="auto">
         <Table variant="simple">
           <TableCaption>
-            Reading uses the primary key.
+            Generated indexed keys are available in the dataset but can be
+            non-unique.
             <br />
             Unit of measurement is <Text as="b">second</Text>.
           </TableCaption>
@@ -140,7 +147,7 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
                 DB Engine
               </Th>
               <Th colSpan={2} textAlign="center">
-                m transaction
+                n transaction
               </Th>
               <Th colSpan={2} textAlign="center">
                 1 transaction
@@ -247,4 +254,4 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   );
 };
 
-export default ReadByRangeTable;
+export default ReadByIndexTable;

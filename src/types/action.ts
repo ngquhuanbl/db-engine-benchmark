@@ -19,3 +19,12 @@ export interface ReadByRangeExtraData {
 export interface ReadFromTheEndOfSourceDataExtraData {
 	readFromTheEndOfSourceDataCount: number;
 }
+
+export interface ReadByIndexExtraData {
+	keys: string[];
+}
+
+export interface ReadByLimitExtraData {
+	limit: number;
+	count: number;
+}

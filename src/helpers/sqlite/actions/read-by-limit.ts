@@ -1,16 +1,22 @@
-import { DEFAULT_READ_ALL_COUNT } from "../../../constants/dataset";
-import { TABLE_NAME } from "../../../constants/schema";
-import { Action, ReadAllExtraData } from "../../../types/action";
-import { ReadAllResult } from "../../../types/result";
+import {
+  DEFAULT_LIMIT,
+  DEFAULT_READ_BY_LIMIT_COUNT,
+} from "../../../constants/dataset";
+import { PRIMARY_KEYS, TABLE_NAME } from "../../../constants/schema";
+import { Action, ReadByLimitExtraData } from "../../../types/action";
+import { ReadByLimitResult } from "../../../types/result";
 import { escapeStr } from "../../escape-str";
 import { patchJSError } from "../../patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
+export const execute: Action<ReadByLimitResult, ReadByLimitExtraData> = async (
   data,
   addLog,
   removeLog,
-  { readAllCount } = { readAllCount: DEFAULT_READ_ALL_COUNT}
+  { limit, count } = {
+    limit: DEFAULT_LIMIT,
+    count: DEFAULT_READ_BY_LIMIT_COUNT,
+  }
 ) => {
   const datasetSize = data.length;
   const conn = await openSQLiteDatabase();
@@ -22,10 +28,10 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
 
   //#region n transaction
   {
-    const logId = addLog("[sqlite][read-all][n-transaction] read all");
-    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
+    const logId = addLog("[sqlite][read-by-limit][n-transaction] read");
+    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
     const requests: Promise<number>[] = [];
-    for (let i = 0; i < readAllCount; i += 1) {
+    for (let i = 0; i < count; i += 1) {
       requests.push(
         new Promise<number>((resolve, reject) => {
           const start = performance.now();
@@ -33,21 +39,11 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
             if (error)
               reject(
                 patchJSError(error, {
-                  tags: ["sqlite", "read-all", "n-transaction"],
+                  tags: ["sqlite", "read-by-limit", "n-transaction"],
                 })
               );
             else {
               const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
-                console.error(
-                  "[sqlite][read-all][n-transaction] wrong result",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
               resolve(end - start);
             }
           });
@@ -57,7 +53,7 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
     const results = await Promise.all(requests);
     removeLog(logId);
     nTransactionSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = nTransactionSum / readAllCount;
+    nTransactionAverage = nTransactionSum / count;
   }
   //#endregion
 
@@ -65,7 +61,7 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
   {
     const results = await new Promise<number[]>((resolve, reject) => {
       const results: number[] = [];
-      const logId = addLog("[sqlite][read-all][one-transaction] read all");
+      const logId = addLog("[sqlite][read-by-limit][one-transaction] read");
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
@@ -73,37 +69,26 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
               patchJSError(error, {
                 tags: [
                   "sqlite",
-                  "read-all",
+                  "read-by-limit",
                   "1-transaction",
-                  "3 ranges",
                   "begin-transaction",
                 ],
               })
             );
         });
 
-        for (let i = 0; i < readAllCount; i += 1) {
-          const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
+        for (let i = 0; i < count; i += 1) {
+          const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
           const start = performance.now();
           conn.all(query, undefined, (error, rows) => {
             if (error) {
               reject(
                 patchJSError(error, {
-                  tags: ["sqlite", "read-all", "1-transaction"],
+                  tags: ["sqlite", "read-by-limit", "1-transaction"],
                 })
               );
             } else {
               const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[sqlite][read-all][one-transaction] wrong result",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
               results.push(end - start);
             }
           });
@@ -115,9 +100,8 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
               patchJSError(error, {
                 tags: [
                   "sqlite",
-                  "read-all",
+                  "read-by-limit",
                   "1-transaction",
-                  "3 ranges",
                   "commit-transaction",
                 ],
               })
@@ -128,7 +112,7 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
       });
     });
     oneTransactionSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = oneTransactionSum / readAllCount;
+    oneTransactionAverage = oneTransactionSum / count;
   }
   //#endregion
 

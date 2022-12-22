@@ -3,15 +3,16 @@ import { faker } from "@faker-js/faker";
 import { Data, MessageSrc } from "../types/data";
 import { createMsgId } from "./create-key";
 
-function getUserId(): number {
-  return Math.round(Math.random() * 8);
+export function getConvId(): string {
+  return createMsgId(Math.round(Math.random() * 8));
 }
+
 export function generateData(size: number): Array<Data> {
   let msgIdCounter = 0;
   return Array.from({ length: size }).map(() => ({
     msgId: createMsgId(msgIdCounter++),
     cliMsgId: faker.datatype.uuid(),
-    toUid: createMsgId(getUserId()),
+    toUid: getConvId(),
     msgType: faker.datatype.number({ min: 1, max: 3 }),
     sendDttm: `${faker.datatype.datetime().getTime()}`,
     isExpired: faker.datatype.boolean(),

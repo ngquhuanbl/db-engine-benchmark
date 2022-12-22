@@ -1,4 +1,4 @@
-import { MIN_READ_ALL_COUNT } from "../../../constants/dataset";
+import { DEFAULT_READ_ALL_COUNT } from "../../../constants/dataset";
 import { TABLE_NAME } from "../../../constants/schema";
 import { Action, ReadAllExtraData } from "../../../types/action";
 import { ReadAllResult } from "../../../types/result";
@@ -9,7 +9,7 @@ export const execute: Action<ReadAllResult, ReadAllExtraData> = async (
   data,
   addLog,
   removeLog,
-  { readAllCount } = { readAllCount: MIN_READ_ALL_COUNT }
+  { readAllCount } = { readAllCount: DEFAULT_READ_ALL_COUNT }
 ) => {
   const datasetSize = data.length;
 

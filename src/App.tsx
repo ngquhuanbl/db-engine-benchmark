@@ -26,6 +26,8 @@ import ReadAllTable from "./components/ReadAllTable";
 import { loadData } from "./helpers/indexedDB/load-data";
 import { RepeatIcon } from "@chakra-ui/icons";
 import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
+import ReadByIndexTable from "./components/ReadByIndexTable";
+import ReadByLimitTable from "./components/ReadByLimitTable";
 
 let logIdCounter = 0;
 
@@ -83,7 +85,7 @@ function App() {
       padding={4}
       minW={700}
       maxW="unset"
-      height="100vh"
+      minHeight="100vh"
       display="flex"
       flexDir="column"
     >
@@ -120,38 +122,61 @@ function App() {
           Generate
         </Button>
       </FormControl>
-      <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={4}>
-        <GridItem colStart={0} colEnd={1}>
+      <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
+        <GridItem>
           <SingleReadWriteTable
             dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />
         </GridItem>
-        <GridItem colStart={0} colEnd={1}>
+        <GridItem>
           <ReadByRangeTable
             dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />
         </GridItem>
-        <GridItem colStart={1} colEnd={2} rowStart={1}>
+        <GridItem>
           <ReadAllTable
             dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />
         </GridItem>
-        <GridItem colStart={1} colEnd={2} rowStart={2}>
+        <GridItem>
           <ReadFromTheEndOfSourceDataTable
             dataset={dataset}
             addLog={addLog}
             removeLog={removeLog}
           />
         </GridItem>
+        <GridItem>
+          <ReadByIndexTable
+            dataset={dataset}
+            addLog={addLog}
+            removeLog={removeLog}
+          />
+        </GridItem>
+        <GridItem>
+          <ReadByLimitTable
+            dataset={dataset}
+            addLog={addLog}
+            removeLog={removeLog}
+          />
+        </GridItem>
       </Grid>
-      <Flex marginTop="auto" height="68px" overflowY="auto">
-        <Text fontSize={14} marginRight={2} fontWeight={600}>
+      <Flex
+        marginTop="auto"
+        height="68px"
+        overflowY="auto"
+        backgroundColor="teal"
+        boxShadow="0px -7px 0px var(--chakra-colors-teal-100)"
+        padding={4}
+        position="fixed"
+        bottom="0"
+      >
+        <Text fontSize={14} marginRight={2} fontWeight={600} color="white">
           <span role="img" aria-label="">
             📃
           </span>{" "}
@@ -159,7 +184,7 @@ function App() {
         </Text>
         <Flex direction="column" gap="5px">
           {logs.map(({ id, content }) => (
-            <Text key={id} fontSize={14}>
+            <Text key={id} fontSize={14} color="white">
               {content}
             </Text>
           ))}

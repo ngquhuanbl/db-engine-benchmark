@@ -1,11 +1,12 @@
-import { DB_NAME, PRIMARY_KEYS, TABLE_NAME } from "../../constants/schema";
+import { DB_NAME, INDEXED_KEYS, INDEX_NAME, PRIMARY_KEYS, TABLE_NAME } from "../../constants/schema";
 
 export async function openIndexdDBDatabase(): Promise<IDBDatabase> {
   const openReq = indexedDB.open(DB_NAME);
   return new Promise<IDBDatabase>((resolve, reject) => {
     openReq.onupgradeneeded = function () {
       const dbInstance = openReq.result;
-      dbInstance.createObjectStore(TABLE_NAME, { keyPath: PRIMARY_KEYS });
+      const objectStore = dbInstance.createObjectStore(TABLE_NAME, { keyPath: PRIMARY_KEYS });
+	  objectStore.createIndex(INDEX_NAME, INDEXED_KEYS)
     };
     openReq.onsuccess = function () {
       resolve(openReq.result);

@@ -94,9 +94,9 @@ const SingleReadWriteTable: React.FC<Props> = ({
   }, [dataset, toast, addLog, removeLog]);
 
   return (
-    <Flex direction="column" gap={8}>
-      <Heading size="sm">Single read write</Heading>
-      <TableContainer w="100%">
+    <Flex direction="column" h="100%">
+      <Heading size="sm" marginBottom={4}>Single read write</Heading>
+      <TableContainer w="100%" height="285px" marginTop="auto">
         <Table variant="simple">
           <TableCaption>
             Unit of measurement is <Text as="b">second</Text>.
@@ -114,10 +114,10 @@ const SingleReadWriteTable: React.FC<Props> = ({
               </Th>
             </Tr>
             <Tr>
-              <Th textAlign="center">Read</Th>
-              <Th textAlign="center">Write</Th>
-              <Th textAlign="center">Read</Th>
-              <Th textAlign="center">Write</Th>
+              <Th textAlign="center">Read (total)</Th>
+              <Th textAlign="center">Write (total)</Th>
+              <Th textAlign="center">Read (total)</Th>
+              <Th textAlign="center">Write (total)</Th>
             </Tr>
           </Thead>
           <Tbody>

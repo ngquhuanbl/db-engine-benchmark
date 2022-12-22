@@ -3,6 +3,8 @@ import { VALID_SQLITE_TYPE } from "../types/sqlite";
 export const DB_NAME = "core";
 export const TABLE_NAME = "message";
 export const PRIMARY_KEYS = ["msgId"];
+export const INDEX_NAME = 'convId';
+export const INDEXED_KEYS = ['toUid'];
 
 type ColumnInfo = {
   name: string;

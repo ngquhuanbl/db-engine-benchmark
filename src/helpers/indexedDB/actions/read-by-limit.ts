@@ -1,23 +1,20 @@
-import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../constants/dataset";
-import { TABLE_NAME } from "../../../constants/schema";
 import {
-  Action,
-  ReadFromTheEndOfSourceDataExtraData,
-} from "../../../types/action";
-import { ReadFromTheEndOfSourceDataResult } from "../../../types/result";
+  DEFAULT_LIMIT,
+  DEFAULT_READ_BY_LIMIT_COUNT,
+} from "../../../constants/dataset";
+import { TABLE_NAME } from "../../../constants/schema";
+import { Action, ReadByLimitExtraData } from "../../../types/action";
+import { ReadByLimitResult } from "../../../types/result";
 import { patchDOMException } from "../../patch-error";
 import { openIndexdDBDatabase } from "../common";
 
-export const execute: Action<
-  ReadFromTheEndOfSourceDataResult,
-  ReadFromTheEndOfSourceDataExtraData
-> = async (
+export const execute: Action<ReadByLimitResult, ReadByLimitExtraData> = async (
   data,
   addLog,
   removeLog,
-  { readFromTheEndOfSourceDataCount } = {
-    readFromTheEndOfSourceDataCount:
-      DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
+  { limit, count } = {
+    limit: DEFAULT_LIMIT,
+    count: DEFAULT_READ_BY_LIMIT_COUNT,
   }
 ) => {
   const datasetSize = data.length;
@@ -31,41 +28,35 @@ export const execute: Action<
 
   //#region n transaction
   {
-    const logId = addLog("[idb][read-from-end-source][n-transaction] read");
+    const logId = addLog("[idb][read-by-limit][n-transaction] read");
     const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromTheEndOfSourceDataCount; i += 1) {
+    for (let i = 0; i < count; i += 1) {
       requests.push(
         new Promise<number>((resolve, reject) => {
           const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
           const objectStore = transaction.objectStore(TABLE_NAME);
           const start = performance.now();
-          const readReq = objectStore.openCursor(undefined, "prev");
+          const readReq = objectStore.openCursor();
           const result = [];
+          const finish = () => {
+            const end = performance.now();
+            resolve(end - start);
+          };
           readReq.onsuccess = function () {
             const cursor = readReq.result;
             if (cursor) {
               result.push(cursor.value);
-              cursor.continue();
+              if (result.length === limit) {
+                finish();
+              } else cursor.continue();
             } else {
-              const end = performance.now();
-
-              const resultLength = result.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[idb][read-from-end-source][n-transaction] wrong result",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              resolve(end - start);
+              finish();
             }
           };
           readReq.onerror = function () {
             reject(
               patchDOMException(readReq.error!, {
-                tags: ["idb", "read-from-end-source", "n-transaction"],
+                tags: ["idb", "read-by-limit", "n-transaction"],
               })
             );
           };
@@ -75,46 +66,41 @@ export const execute: Action<
     const results = await Promise.all(requests);
     removeLog(logId);
     nTransactionSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = nTransactionSum / readFromTheEndOfSourceDataCount;
+    nTransactionAverage = nTransactionSum / count;
   }
   //#endregion
 
   //#region one transaction
   {
-    const logId = addLog("[idb][read-from-end-source][one-transaction] read");
+    const logId = addLog("[idb][read-by-limit][one-transaction] read");
     const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromTheEndOfSourceDataCount; i += 1) {
+    for (let i = 0; i < count; i += 1) {
       requests.push(
         new Promise<number>((resolve, reject) => {
           const start = performance.now();
-          const readReq = objectStore.openCursor(undefined, "prev");
+          const readReq = objectStore.openCursor();
           const result = [];
+          const finish = () => {
+            const end = performance.now();
+            resolve(end - start);
+          };
           readReq.onsuccess = function () {
             const cursor = readReq.result;
             if (cursor) {
               result.push(cursor.value);
-              cursor.continue();
+              if (result.length === limit) {
+                finish();
+              } else cursor.continue();
             } else {
-              const resultLength = result.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[idb][read-from-end-source][one-transaction] wrong result",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              const end = performance.now();
-              resolve(end - start);
+              finish();
             }
           };
           readReq.onerror = function () {
             reject(
               patchDOMException(readReq.error!, {
-                tags: ["idb", "read-from-end-source", "one-transaction"],
+                tags: ["idb", "read-by-limit", "one-transaction"],
               })
             );
           };
@@ -124,7 +110,7 @@ export const execute: Action<
     const results = await Promise.all(requests);
     removeLog(logId);
     oneTransactionSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = oneTransactionSum / readFromTheEndOfSourceDataCount;
+    oneTransactionAverage = oneTransactionSum / count;
   }
   //#endregion
 

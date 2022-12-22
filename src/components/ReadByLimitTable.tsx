@@ -1,8 +1,8 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Data } from "../types/data";
-import { ReadByRangeResult } from "../types/result";
-import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
-import { readByRange as executeSQLite } from "../helpers/sqlite/actions";
+import { ReadAllResult } from "../types/result";
+import { readByLimit as executeIndexedDB } from "../helpers/indexedDB/actions";
+import { readByLimit as executeSQLite } from "../helpers/sqlite/actions";
 import {
   Flex,
   IconButton,
@@ -27,10 +27,14 @@ import {
 } from "@chakra-ui/react";
 import { convertMsToS } from "../helpers/convert";
 import { ArrowRightIcon } from "@chakra-ui/icons";
-import { MIN_NUM_OF_RANGE, DEFAULT_NUM_OF_RANGE } from "../constants/dataset";
-import { calculateRange } from "../helpers/calculate-range";
+import {
+  DEFAULT_LIMIT,
+  DEFAULT_READ_BY_LIMIT_COUNT,
+  MIN_LIMIT,
+  MIN_READ_BY_LIMIT_COUNT,
+} from "../constants/dataset";
 
-const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
+const formatResult = (result: ReadAllResult): ReadAllResult => ({
   nTransactionAverage: convertMsToS(result.nTransactionAverage),
   nTransactionSum: convertMsToS(result.nTransactionSum),
   oneTransactionAverage: convertMsToS(result.oneTransactionAverage),
@@ -43,33 +47,36 @@ interface Props {
   removeLog(logId: number): void;
 }
 
-const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
-  const [numOfRanges, setNumOfRanges] = useState(DEFAULT_NUM_OF_RANGE);
-  const [indexedDBResult, setIndexedDBResult] =
-    useState<ReadByRangeResult | null>(null);
-  const [sqliteResult, setSQLiteResult] = useState<ReadByRangeResult | null>(
+const ReadByLimitTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
+  const [readCount, setReadCount] = useState(DEFAULT_READ_BY_LIMIT_COUNT);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+
+  const [indexedDBResult, setIndexedDBResult] = useState<ReadAllResult | null>(
     null
   );
+  const [sqliteResult, setSQLiteResult] = useState<ReadAllResult | null>(null);
 
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
   const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
 
-  const ranges = useMemo(() => {
-    const datasetSize = dataset.length;
-    return calculateRange(datasetSize, numOfRanges);
-  }, [dataset, numOfRanges]);
-
   const toast = useToast();
 
-  const handleNumOfRangesChange = useCallback((value) => {
-    setNumOfRanges(value);
+  const handleReadCountChange = useCallback((count) => {
+    setReadCount(count);
+  }, []);
+
+  const handleLimitChange = useCallback((count) => {
+    setLimit(count);
   }, []);
 
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
     setTimeout(() => {
-      executeIndexedDB(dataset, addLog, removeLog, { ranges })
+      executeIndexedDB(dataset, addLog, removeLog, {
+        count: readCount,
+        limit,
+      })
         .then((result) => {
           setIndexedDBResult(formatResult(result));
         })
@@ -85,12 +92,15 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
           setIsIndexedDBRunning(false);
         });
     });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [dataset, toast, addLog, removeLog, readCount, limit]);
 
   const runSQLite = useCallback(() => {
     setIsSQLiteRunning(true);
 
-    executeSQLite(dataset, addLog, removeLog, { ranges })
+    executeSQLite(dataset, addLog, removeLog, {
+      count: readCount,
+      limit,
+    })
       .then((result) => {
         setSQLiteResult(formatResult(result));
       })
@@ -105,28 +115,49 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       .finally(() => {
         setIsSQLiteRunning(false);
       });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [dataset, toast, addLog, removeLog, readCount, limit]);
 
   return (
     <Flex direction="column" h="100%">
-      <Heading size="sm" marginBottom={4}>Read by range</Heading>
-      <FormControl display="flex" alignItems="center" marginBottom={2}>
-        <FormLabel margin="0" marginRight="4">
-          Num of ranges (m):
-        </FormLabel>
-        <NumberInput
-          min={MIN_NUM_OF_RANGE}
-          flexGrow={1}
-          value={numOfRanges}
-          onChange={handleNumOfRangesChange}
-        >
-          <NumberInputField />
-          <NumberInputStepper>
-            <NumberIncrementStepper />
-            <NumberDecrementStepper />
-          </NumberInputStepper>
-        </NumberInput>
-      </FormControl>
+      <Heading size="sm" marginBottom={4}>
+        Read by limit
+      </Heading>
+      <Flex>
+        <FormControl display="flex" alignItems="center" marginBottom={2}>
+          <FormLabel margin="0" marginRight="4">
+            Limit:
+          </FormLabel>
+          <NumberInput
+            min={MIN_LIMIT}
+            flexGrow={1}
+            value={limit}
+            onChange={handleLimitChange}
+          >
+            <NumberInputField />
+            <NumberInputStepper>
+              <NumberIncrementStepper />
+              <NumberDecrementStepper />
+            </NumberInputStepper>
+          </NumberInput>
+        </FormControl>
+        <FormControl display="flex" alignItems="center" marginBottom={2} marginLeft={4}>
+          <FormLabel margin="0" marginRight="4">
+            Read count (m):
+          </FormLabel>
+          <NumberInput
+            min={MIN_READ_BY_LIMIT_COUNT}
+            flexGrow={1}
+            value={readCount}
+            onChange={handleReadCountChange}
+          >
+            <NumberInputField />
+            <NumberInputStepper>
+              <NumberIncrementStepper />
+              <NumberDecrementStepper />
+            </NumberInputStepper>
+          </NumberInput>
+        </FormControl>
+      </Flex>
       <TableContainer w="100%" height="285px" marginTop="auto">
         <Table variant="simple">
           <TableCaption>
@@ -139,10 +170,10 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
               <Th rowSpan={2} width={270}>
                 DB Engine
               </Th>
-              <Th colSpan={2} textAlign="center">
+              <Th textAlign="center" colSpan={2}>
                 m transaction
               </Th>
-              <Th colSpan={2} textAlign="center">
+              <Th textAlign="center" colSpan={2}>
                 1 transaction
               </Th>
             </Tr>
@@ -247,4 +278,4 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
   );
 };
 
-export default ReadByRangeTable;
+export default ReadByLimitTable;

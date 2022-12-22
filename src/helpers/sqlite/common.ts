@@ -3,6 +3,8 @@ import {
   TABLE_NAME,
   COLUMN_LIST_INFO,
   PRIMARY_KEYS,
+  INDEX_NAME,
+  INDEXED_KEYS,
 } from "../../constants/schema";
 import { Z_OPEN_MODE } from "../../constants/sqlite";
 import { escapeStr } from "../escape-str";
@@ -22,12 +24,10 @@ export function openSQLiteDatabase() {
         });
       });
 
-      // Create missing table
+      //#region Create missing table
       const tableName = escapeStr(TABLE_NAME);
       const didTableExits = await new Promise<boolean>((resolve, reject) => {
-        const queryStr = `SELECT name FROM sqlite_master WHERE type="table" AND name=${escapeStr(
-          TABLE_NAME
-        )}`;
+        const queryStr = `SELECT name FROM sqlite_master WHERE type="table" AND name=${tableName}`;
         instance.all(queryStr, (error, rows) => {
           if (error) reject(error);
           else resolve(rows.length === 1);
@@ -46,6 +46,27 @@ export function openSQLiteDatabase() {
           instance.run(query, (error) => (error ? reject(error) : resolve()));
         });
       }
+      //#endregion
+
+      //#region Create missing index
+      const indexName = escapeStr(INDEX_NAME);
+      const didIndexExits = await new Promise<boolean>((resolve, reject) => {
+        const queryStr = `SELECT name FROM sqlite_master WHERE type="index" AND name=${indexName}`;
+        instance.all(queryStr, (error, rows) => {
+          if (error) reject(error);
+          else resolve(rows.length === 1);
+        });
+      });
+
+      if (!didIndexExits) {
+        await new Promise<void>((resolve, reject) => {
+          const definedFieldsSql = INDEXED_KEYS.join(' , ');
+
+          const query: string = `CREATE INDEX ${indexName} ON ${tableName} (${definedFieldsSql})`;
+          instance.run(query, (error) => (error ? reject(error) : resolve()));
+        });
+      }
+      //#endregion
 
       // Return the connection
       resolve(instance);

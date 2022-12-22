@@ -1,4 +1,4 @@
-import { MIN_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../constants/dataset";
+import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../constants/dataset";
 import { PRIMARY_KEYS, TABLE_NAME } from "../../../constants/schema";
 import {
   Action,
@@ -17,7 +17,8 @@ export const execute: Action<
   addLog,
   removeLog,
   { readFromTheEndOfSourceDataCount } = {
-    readFromTheEndOfSourceDataCount: MIN_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
+    readFromTheEndOfSourceDataCount:
+      DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
   }
 ) => {
   const datasetSize = data.length;
