@@ -1,4 +1,4 @@
-const rawSQLite3 = require("./nativelibs/sqlite3");
+const rawSQLite3 = require("../nativelibs/sqlite3");
 
 let idCounter = 0;
 

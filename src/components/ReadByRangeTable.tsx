@@ -365,6 +365,7 @@ const ReadByRangeTable: React.FC<Props> = ({
                     switch (comparisonResult) {
                       case ComparisonResult.TIE: {
                         bgColor = TIE_COLOR;
+						color = "white";
                         break;
                       }
                       case ComparisonResult.INDEXED_DB: {
@@ -415,6 +416,7 @@ const ReadByRangeTable: React.FC<Props> = ({
                     switch (comparisonResult) {
                       case ComparisonResult.TIE: {
                         bgColor = TIE_COLOR;
+						color = "white";
                         break;
                       }
                       case ComparisonResult.SQLITE: {
