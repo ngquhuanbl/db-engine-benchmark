@@ -9,24 +9,35 @@ export const listenToRunAllEvent = (
   runAllListeners[order] = listener;
 };
 
-export const triggerRunAllEvent = async () => {
-  const entries = Object.entries(runAllListeners).sort((a, b) => +a[0] - +[0]);
-  for (const [_, listener] of entries) {
+export const triggerRunAllEvent = async (
+  onProgress: (value: number) => void
+) => {
+  const entries = Object.entries(runAllListeners).sort((a, b) => +a[0] - +b[0]);
+  const n = entries.length;
+  onProgress(0);
+  for (let i = 0; i < n; i += 1) {
+    const listener = entries[i][1];
     await listener();
+    const progress = ((i + 1) / n) * 100;
+    onProgress(progress);
   }
+  onProgress(0);
 };
 //#endregion
 
 //#region 'get-all' event
 interface GetAllResult {
-	indexedDB: object | null;
-	sqlite: object | null;
+  indexedDB: object | null;
+  sqlite: object | null;
 }
 type GetAllListener = () => GetAllResult;
 
 const getAllListeners: Record<string, GetAllListener> = {};
-export const listenToGetAllEvent = (actionName: string, listener: GetAllListener) => {
-	getAllListeners[actionName] = listener;
+export const listenToGetAllEvent = (
+  actionName: string,
+  listener: GetAllListener
+) => {
+  getAllListeners[actionName] = listener;
 };
 export const triggerGetAllEvent = () => {
   const res: Record<string, GetAllResult> = {};

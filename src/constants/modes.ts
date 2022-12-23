@@ -1,0 +1,1 @@
+export const DEFAULT_CHART_VIEW_MODE_ONE = false;

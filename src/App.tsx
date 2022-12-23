@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
+
+import { RepeatIcon } from "@chakra-ui/icons";
 import {
   Button,
   Container,
@@ -13,23 +15,25 @@ import {
   NumberInput,
   NumberInputField,
   NumberInputStepper,
+  Progress,
+  Switch,
   Text,
   useToast,
 } from "@chakra-ui/react";
 
-import { Data } from "./types/data";
-import { generateData } from "./helpers/generate-data";
-import { LogObj } from "./types/logs";
-import { DEFAULT_DATASET_SIZE, MIN_DATASET_SIZE } from "./constants/dataset";
-import SingleReadWriteTable from "./components/SingleReadWriteTable";
-import ReadByRangeTable from "./components/ReadByRangeTable";
 import ReadAllTable from "./components/ReadAllTable";
-import { loadData } from "./helpers/indexedDB/load-data";
-import { RepeatIcon } from "@chakra-ui/icons";
-import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
 import ReadByIndexTable from "./components/ReadByIndexTable";
 import ReadByLimitTable from "./components/ReadByLimitTable";
+import ReadByRangeTable from "./components/ReadByRangeTable";
+import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
+import SingleReadWriteTable from "./components/SingleReadWriteTable";
+import { DEFAULT_DATASET_SIZE, MIN_DATASET_SIZE } from "./constants/dataset";
+import { DEFAULT_CHART_VIEW_MODE_ONE } from "./constants/modes";
 import { triggerGetAllEvent, triggerRunAllEvent } from "./helpers/events";
+import { generateData } from "./helpers/generate-data";
+import { loadData } from "./helpers/indexedDB/load-data";
+import { Data } from "./types/data";
+import { LogObj } from "./types/logs";
 
 let logIdCounter = 0;
 
@@ -37,8 +41,16 @@ function App() {
   const [datasetSize, setDatasetSize] = useState(DEFAULT_DATASET_SIZE);
   const [dataset, setDataset] = useState<Data[]>([]);
 
+  const [chartViewModeOn, setChartViewModeOn] = useState(
+    DEFAULT_CHART_VIEW_MODE_ONE
+  );
+  const handleChartViewModeOnChange = useCallback((event) => {
+    setChartViewModeOn(event.target.checked);
+  }, []);
+
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
+  const [runAllProgress, setRunAllProgress] = useState(10);
 
   const [logs, setLogs] = useState<Array<LogObj>>([]);
 
@@ -84,7 +96,9 @@ function App() {
 
   const runAll = useCallback(() => {
     setIsRunningAll(true);
-    triggerRunAllEvent().finally(() => setIsRunningAll(false));
+    triggerRunAllEvent((value) => setRunAllProgress(value)).finally(() =>
+      setIsRunningAll(false)
+    );
   }, []);
 
   useEffect(() => {
@@ -100,106 +114,149 @@ function App() {
   }, []);
 
   return (
-    <Container
-      padding={4}
-      minW={700}
-      maxW="unset"
-      minHeight="100vh"
-      display="flex"
-      flexDir="column"
-    >
-      <Heading size="md" marginBottom={4}>
-        DB engine benchmark{" "}
-        <span role="img" aria-label="">
-          🧪
-        </span>
-      </Heading>
-      <FormControl display="flex" alignItems="center" marginBottom={4}>
-        <FormLabel margin="0" marginRight="4">
-          Dataset size (n):
-        </FormLabel>
-        <NumberInput
-          min={MIN_DATASET_SIZE}
-          flexGrow={1}
-          value={datasetSize}
-          onChange={handleDatasetSizeChange}
-          isDisabled={isLoadingData}
-        >
-          <NumberInputField />
-          <NumberInputStepper>
-            <NumberIncrementStepper />
-            <NumberDecrementStepper />
-          </NumberInputStepper>
-        </NumberInput>
-        <Button
-          isLoading={isLoadingData}
-          colorScheme="orange"
-          leftIcon={<RepeatIcon />}
-          onClick={generateDataset}
-          marginLeft={8}
-        >
-          Generate
-        </Button>
-      </FormControl>
-      <Flex marginBottom={4}>
-        <Button onClick={runAll} marginRight={4} isLoading={isRunningAll}>
-          Run all 🔥
-        </Button>
-        <Button onClick={getAllResult}>Get JSON result 📄</Button>
-      </Flex>
-      <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
-        <GridItem>
-          <SingleReadWriteTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-        <GridItem>
-          <ReadByRangeTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-        <GridItem>
-          <ReadAllTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-        <GridItem>
-          <ReadFromTheEndOfSourceDataTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-        <GridItem>
-          <ReadByIndexTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-        <GridItem>
-          <ReadByLimitTable
-            dataset={dataset}
-            addLog={addLog}
-            removeLog={removeLog}
-          />
-        </GridItem>
-      </Grid>
+    <>
+      <Container
+        padding={4}
+        minW={700}
+        maxW="unset"
+        minHeight="100vh"
+        display="flex"
+        flexDir="column"
+      >
+        <Heading size="md" marginBottom={4}>
+          DB engine benchmark{" "}
+          <span role="img" aria-label="">
+            🧪
+          </span>
+        </Heading>
+        <FormControl display="flex" alignItems="center" marginBottom={4}>
+          <FormLabel margin="0" marginRight="4">
+            Dataset size (n):
+          </FormLabel>
+          <NumberInput
+            min={MIN_DATASET_SIZE}
+            flexGrow={1}
+            value={datasetSize}
+            onChange={handleDatasetSizeChange}
+            isDisabled={isLoadingData}
+          >
+            <NumberInputField />
+            <NumberInputStepper>
+              <NumberIncrementStepper />
+              <NumberDecrementStepper />
+            </NumberInputStepper>
+          </NumberInput>
+          <Button
+            isLoading={isLoadingData}
+            colorScheme="purple"
+            leftIcon={<RepeatIcon />}
+            onClick={generateDataset}
+            marginLeft={8}
+          >
+            Generate
+          </Button>
+        </FormControl>
+        <Flex marginBottom={4} alignItems="center">
+          <Button
+            onClick={runAll}
+            colorScheme="orange"
+            marginRight={4}
+            isLoading={isRunningAll}
+          >
+            Run all{" "}
+            <span role="img" aria-label="run all">
+              🔥
+            </span>
+          </Button>
+          {isRunningAll && (
+            <Progress
+              hasStripe
+              isAnimated
+              size="sm"
+              value={runAllProgress}
+              colorScheme="orange"
+              w="10%"
+              mr={4}
+            />
+          )}
+          <Button onClick={getAllResult}>
+            Get JSON result{" "}
+            <span role="img" aria-label="copy">
+              📄
+            </span>
+          </Button>
+          <FormControl display="flex" alignItems="center" ml="auto" w="unset">
+            <FormLabel htmlFor="chart-view" mb="0">
+              Chart view:
+            </FormLabel>
+            <Switch
+              id="chart-view"
+              isChecked={chartViewModeOn}
+              onChange={handleChartViewModeOnChange}
+            />
+          </FormControl>
+        </Flex>
+        <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
+          <GridItem>
+            <SingleReadWriteTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadByRangeTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadAllTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadFromTheEndOfSourceDataTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadByIndexTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadByLimitTable
+              dataset={dataset}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+        </Grid>
+      </Container>
       <Flex
         marginTop="auto"
         height="68px"
         overflowY="auto"
-        backgroundColor="teal"
-        boxShadow="0px -7px 0px var(--chakra-colors-teal-100)"
+        backgroundColor="gray.600"
+        boxShadow="0px -7px 0px var(--chakra-colors-gray-200)"
         padding={4}
         position="fixed"
         bottom="0"
+        zIndex={2}
       >
         <Text fontSize={14} marginRight={2} fontWeight={600} color="white">
           <span role="img" aria-label="">
@@ -215,7 +272,7 @@ function App() {
           ))}
         </Flex>
       </Flex>
-    </Container>
+    </>
   );
 }
 

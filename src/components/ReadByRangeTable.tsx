@@ -1,60 +1,190 @@
+import { ApexOptions } from "apexcharts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Data } from "../types/data";
-import { ReadByRangeResult } from "../types/result";
-import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
-import { readByRange as executeSQLite } from "../helpers/sqlite/actions";
+import ReactApexChart from "react-apexcharts";
+import { ArrowRightIcon } from "@chakra-ui/icons";
 import {
+  Button,
   Flex,
-  IconButton,
-  Table,
-  TableCaption,
-  TableContainer,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-  Text,
-  useToast,
-  Heading,
   FormControl,
   FormLabel,
+  Heading,
+  IconButton,
   NumberDecrementStepper,
   NumberIncrementStepper,
   NumberInput,
   NumberInputField,
   NumberInputStepper,
+  Table,
+  TableCaption,
+  TableContainer,
+  Tbody,
+  Td,
+  Text,
+  Th,
+  Thead,
+  Tr,
+  useToast,
 } from "@chakra-ui/react";
-import { convertMsToS } from "../helpers/convert";
-import { ArrowRightIcon } from "@chakra-ui/icons";
-import { MIN_NUM_OF_RANGE, DEFAULT_NUM_OF_RANGE } from "../constants/dataset";
-import { calculateRange } from "../helpers/calculate-range";
+
+import {
+  ComparisonResult,
+  INDEXED_DB_COLOR,
+  SQLITE_COLOR,
+  TIE_COLOR,
+} from "../constants/comparison";
+import { DEFAULT_NUM_OF_RANGE, MIN_NUM_OF_RANGE } from "../constants/dataset";
 import { READ_BY_RANGE_ORDER } from "../constants/run-all";
+import { calculateRange } from "../helpers/calculate-range";
+import { convertMsToS } from "../helpers/convert";
 import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
+import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
+import { readByRange as executeSQLite } from "../helpers/sqlite/actions";
+import { Entries, Keys } from "../types/common";
+import { Data } from "../types/data";
+import { ReadByRangeResult } from "../types/result";
 
 const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
-  nTransactionAverage: convertMsToS(result.nTransactionAverage),
-  nTransactionSum: convertMsToS(result.nTransactionSum),
-  oneTransactionAverage: convertMsToS(result.oneTransactionAverage),
-  oneTransactionSum: convertMsToS(result.oneTransactionSum),
+  nTransactionAverage: result.nTransactionAverage
+    ? convertMsToS(result.nTransactionAverage)
+    : null,
+  nTransactionSum: result.nTransactionSum
+    ? convertMsToS(result.nTransactionSum)
+    : null,
+  oneTransactionAverage: result.oneTransactionAverage
+    ? convertMsToS(result.oneTransactionAverage)
+    : null,
+  oneTransactionSum: result.oneTransactionSum
+    ? convertMsToS(result.oneTransactionSum)
+    : null,
 });
+
+type ComparisonData = {
+  [index in keyof ReadByRangeResult]: ComparisonResult;
+};
 
 interface Props {
   dataset: Array<Data>;
   addLog(content: string): number;
   removeLog(logId: number): void;
+  chartViewModeOn: boolean;
 }
 
-const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
+const ReadByRangeTable: React.FC<Props> = ({
+  dataset,
+  addLog,
+  removeLog,
+  chartViewModeOn,
+}) => {
   const [numOfRanges, setNumOfRanges] = useState(DEFAULT_NUM_OF_RANGE);
-  const [indexedDBResult, setIndexedDBResult] =
-    useState<ReadByRangeResult | null>(null);
-  const [sqliteResult, setSQLiteResult] = useState<ReadByRangeResult | null>(
-    null
-  );
+  const [indexedDBResult, setIndexedDBResult] = useState<ReadByRangeResult>({
+    nTransactionAverage: null,
+    nTransactionSum: null,
+    oneTransactionAverage: null,
+    oneTransactionSum: null,
+  });
+  const [sqliteResult, setSQLiteResult] = useState<ReadByRangeResult>({
+    nTransactionAverage: null,
+    nTransactionSum: null,
+    oneTransactionAverage: null,
+    oneTransactionSum: null,
+  });
 
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
   const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
+
+  const chartOptions = useMemo<ApexOptions>(
+    () => ({
+      chart: {
+        type: "bar",
+        height: 350,
+      },
+      plotOptions: {
+        bar: {
+          horizontal: false,
+          columnWidth: "55%",
+          endingShape: "rounded",
+        },
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      stroke: {
+        show: true,
+        width: 2,
+        colors: ["transparent"],
+      },
+      xaxis: {
+        categories: ["n transaction(s)", "1 transaction"],
+      },
+      yaxis: {
+        title: {
+          text: "ms",
+        },
+      },
+      fill: {
+        opacity: 1,
+      },
+      tooltip: {
+        y: {
+          formatter: function (val: number) {
+            return val + " ms";
+          },
+        },
+      },
+      theme: {
+        palette: "palette7",
+      },
+    }),
+    []
+  );
+
+  const chartSeries = useMemo<ApexAxisChartSeries>(() => {
+    const indexedDBData = [];
+    if (indexedDBResult) {
+      const { nTransactionSum, oneTransactionSum } = indexedDBResult;
+      indexedDBData.push(nTransactionSum, oneTransactionSum);
+    }
+
+    const sqliteData = [];
+    if (sqliteResult) {
+      const { nTransactionSum, oneTransactionSum } = sqliteResult;
+      sqliteData.push(nTransactionSum, oneTransactionSum);
+    }
+
+    return [
+      {
+        name: "IndexedDB",
+        data: indexedDBData,
+      },
+      {
+        name: "SQLite",
+        data: sqliteData,
+      },
+    ];
+  }, [indexedDBResult, sqliteResult]);
+
+  const comparisonData = useMemo<ComparisonData>(() => {
+    const res: ComparisonData = {
+      nTransactionSum: ComparisonResult.NO_DATA,
+      nTransactionAverage: ComparisonResult.NO_DATA,
+      oneTransactionSum: ComparisonResult.NO_DATA,
+      oneTransactionAverage: ComparisonResult.NO_DATA,
+    };
+
+    (Object.keys(res) as Keys<ReadByRangeResult>).forEach((metricName) => {
+      const indexedDBMetricValue = indexedDBResult[metricName];
+      const sqliteMetricValue = sqliteResult[metricName];
+      if (indexedDBMetricValue !== null && sqliteMetricValue !== null) {
+        if (indexedDBMetricValue < sqliteMetricValue)
+          res[metricName] = ComparisonResult.INDEXED_DB;
+        else if (indexedDBMetricValue > sqliteMetricValue)
+          res[metricName] = ComparisonResult.SQLITE;
+        else res[metricName] = ComparisonResult.TIE;
+      }
+    });
+
+    return res;
+  }, [indexedDBResult, sqliteResult]);
 
   const ranges = useMemo(() => {
     const datasetSize = dataset.length;
@@ -112,7 +242,7 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
       runIndexedDB().then(() => runSQLite())
     );
   }, [runIndexedDB, runSQLite]);
-  
+
   useEffect(() => {
     listenToGetAllEvent("read-by-range", () => ({
       indexedDB: indexedDBResult,
@@ -142,122 +272,175 @@ const ReadByRangeTable: React.FC<Props> = ({ dataset, addLog, removeLog }) => {
           </NumberInputStepper>
         </NumberInput>
       </FormControl>
-      <TableContainer w="100%" height="285px" marginTop="auto">
-        <Table variant="simple">
-          <TableCaption>
-            Reading uses the primary key.
-            <br />
-            Unit of measurement is <Text as="b">second</Text>.
-          </TableCaption>
-          <Thead>
-            <Tr>
-              <Th rowSpan={2} width={270}>
-                DB Engine
-              </Th>
-              <Th colSpan={2} textAlign="center">
-                m transaction
-              </Th>
-              <Th colSpan={2} textAlign="center">
-                1 transaction
-              </Th>
-            </Tr>
-            <Tr>
-              <Th textAlign="center">Read (Total)</Th>
-              <Th textAlign="center">Read (Average)</Th>
-              <Th textAlign="center">Read (Total)</Th>
-              <Th textAlign="center">Read (Average)</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            <Tr>
-              <Td>
-                <Flex justifyContent={"space-between"} alignItems="center">
-                  <Text>IndexedDB</Text>
-                  <IconButton
-                    colorScheme="teal"
-                    icon={<ArrowRightIcon />}
-                    size="sm"
-                    isLoading={isIndexedDBRunning}
-                    aria-label={"run IndexedDB"}
-                    onClick={runIndexedDB}
-                  />
-                </Flex>
-              </Td>
-              {isIndexedDBRunning ? (
-                <Td backgroundColor="gray.100" colSpan={6} textAlign="center">
-                  Running...
+      {chartViewModeOn ? (
+        <Flex flexDirection="column" marginTop="auto">
+          <Flex>
+            <Button
+              leftIcon={<ArrowRightIcon />}
+              colorScheme="red"
+              size="sm"
+              isLoading={isIndexedDBRunning}
+              onClick={runIndexedDB}
+            >
+              Run IndexedDb
+            </Button>
+            <Button
+              leftIcon={<ArrowRightIcon />}
+              colorScheme="teal"
+              size="sm"
+              isLoading={isSQLiteRunning}
+              onClick={runSQLite}
+              ml={4}
+            >
+              Run SQLite
+            </Button>
+          </Flex>
+          <Flex flexDirection="column" alignItems="center">
+            <ReactApexChart
+              options={chartOptions}
+              series={chartSeries}
+              type="bar"
+              height={350}
+            />
+            <Heading size="xs" textTransform="uppercase">
+              Read
+            </Heading>
+          </Flex>
+        </Flex>
+      ) : (
+        <TableContainer w="100%" height="285px" marginTop="auto">
+          <Table variant="simple">
+            <TableCaption>
+              Reading uses the primary key.
+              <br />
+              Unit of measurement is <Text as="b">second</Text>.
+            </TableCaption>
+            <Thead>
+              <Tr>
+                <Th rowSpan={2} width={270}>
+                  DB Engine
+                </Th>
+                <Th colSpan={2} textAlign="center">
+                  m transaction
+                </Th>
+                <Th colSpan={2} textAlign="center">
+                  1 transaction
+                </Th>
+              </Tr>
+              <Tr>
+                <Th textAlign="center">Read (Total)</Th>
+                <Th textAlign="center">Read (Average)</Th>
+                <Th textAlign="center">Read (Total)</Th>
+                <Th textAlign="center">Read (Average)</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              <Tr>
+                <Td>
+                  <Flex justifyContent={"space-between"} alignItems="center">
+                    <Text>IndexedDB</Text>
+                    <IconButton
+                      colorScheme="red"
+                      icon={<ArrowRightIcon />}
+                      size="sm"
+                      isLoading={isIndexedDBRunning}
+                      aria-label={"run IndexedDB"}
+                      onClick={runIndexedDB}
+                    />
+                  </Flex>
                 </Td>
-              ) : (
-                <>
-                  <Td textAlign="center">
-                    {indexedDBResult === null
-                      ? "..."
-                      : indexedDBResult.nTransactionSum}
+                {isIndexedDBRunning ? (
+                  <Td backgroundColor="gray.100" colSpan={6} textAlign="center">
+                    Running...
                   </Td>
-                  <Td textAlign="center">
-                    {indexedDBResult === null
-                      ? "..."
-                      : indexedDBResult.nTransactionAverage}
-                  </Td>
-                  <Td textAlign="center">
-                    {indexedDBResult === null
-                      ? "..."
-                      : indexedDBResult.oneTransactionSum}
-                  </Td>
-                  <Td textAlign="center">
-                    {indexedDBResult === null
-                      ? "..."
-                      : indexedDBResult.oneTransactionAverage}
-                  </Td>
-                </>
-              )}
-            </Tr>
-            <Tr>
-              <Td>
-                <Flex justifyContent={"space-between"} alignItems="center">
-                  <Text>SQLite</Text>
-                  <IconButton
-                    colorScheme="teal"
-                    icon={<ArrowRightIcon />}
-                    size="sm"
-                    isLoading={isSQLiteRunning}
-                    aria-label={"run SQLite"}
-                    onClick={runSQLite}
-                  />
-                </Flex>
-              </Td>
-              {isSQLiteRunning ? (
-                <Td backgroundColor="gray.100" colSpan={6} textAlign="center">
-                  Running...
+                ) : (
+                  (
+                    Object.entries(
+                      indexedDBResult!
+                    ) as Entries<ReadByRangeResult>
+                  ).map(([metricName, metricValue]) => {
+                    const comparisonResult = comparisonData[metricName];
+                    let bgColor: string | undefined = undefined;
+                    let color: string | undefined = undefined;
+                    switch (comparisonResult) {
+                      case ComparisonResult.TIE: {
+                        bgColor = TIE_COLOR;
+                        break;
+                      }
+                      case ComparisonResult.INDEXED_DB: {
+                        bgColor = INDEXED_DB_COLOR;
+                        color = "white";
+                        break;
+                      }
+                      default:
+                    }
+                    return (
+                      <Td
+                        key={metricName}
+                        textAlign="center"
+                        bgColor={bgColor}
+                        color={color}
+                      >
+                        {metricValue === null ? "..." : `${metricValue} `}
+                      </Td>
+                    );
+                  })
+                )}
+              </Tr>
+              <Tr>
+                <Td>
+                  <Flex justifyContent={"space-between"} alignItems="center">
+                    <Text>SQLite</Text>
+                    <IconButton
+                      colorScheme="teal"
+                      icon={<ArrowRightIcon />}
+                      size="sm"
+                      isLoading={isSQLiteRunning}
+                      aria-label={"run SQLite"}
+                      onClick={runSQLite}
+                    />
+                  </Flex>
                 </Td>
-              ) : (
-                <>
-                  <Td textAlign="center">
-                    {sqliteResult === null
-                      ? "..."
-                      : sqliteResult.nTransactionSum}
+                {isSQLiteRunning ? (
+                  <Td backgroundColor="gray.100" colSpan={6} textAlign="center">
+                    Running...
                   </Td>
-                  <Td textAlign="center">
-                    {sqliteResult === null
-                      ? "..."
-                      : sqliteResult.nTransactionAverage}
-                  </Td>
-                  <Td textAlign="center">
-                    {sqliteResult === null
-                      ? "..."
-                      : sqliteResult.oneTransactionSum}
-                  </Td>
-                  <Td textAlign="center">
-                    {sqliteResult === null
-                      ? "..."
-                      : sqliteResult.oneTransactionAverage}
-                  </Td>
-                </>
-              )}
-            </Tr>
-          </Tbody>
-        </Table>
-      </TableContainer>
+                ) : (
+                  (
+                    Object.entries(sqliteResult!) as Entries<ReadByRangeResult>
+                  ).map(([metricName, metricValue]) => {
+                    const comparisonResult = comparisonData[metricName];
+                    let bgColor: string | undefined = undefined;
+                    let color: string | undefined = undefined;
+                    switch (comparisonResult) {
+                      case ComparisonResult.TIE: {
+                        bgColor = TIE_COLOR;
+                        break;
+                      }
+                      case ComparisonResult.SQLITE: {
+                        bgColor = SQLITE_COLOR;
+                        color = "white";
+                        break;
+                      }
+                      default:
+                    }
+                    return (
+                      <Td
+                        key={metricName}
+                        textAlign="center"
+                        bgColor={bgColor}
+                        color={color}
+                      >
+                        {metricValue === null ? "..." : `${metricValue} `}
+                      </Td>
+                    );
+                  })
+                )}
+              </Tr>
+            </Tbody>
+          </Table>
+        </TableContainer>
+      )}
     </Flex>
   );
 };

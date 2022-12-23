@@ -1,41 +1,41 @@
 export interface SingleReadWriteResult {
-	nTransactionRead: number;
-	nTransactionWrite: number;
-	oneTransactionRead: number;
-	oneTransactionWrite: number;
+  nTransactionRead: number | null;
+  nTransactionWrite: number | null;
+  oneTransactionRead: number | null;
+  oneTransactionWrite: number | null;
 }
 
 export interface ReadByRangeResult {
-	nTransactionAverage: number;
-	nTransactionSum: number;
-	oneTransactionAverage: number;
-	oneTransactionSum: number;
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
 }
 
 export interface ReadAllResult {
-	nTransactionAverage: number;
-	nTransactionSum: number;
-	oneTransactionAverage: number;
-	oneTransactionSum: number;
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
 }
 
 export interface ReadFromTheEndOfSourceDataResult {
-	nTransactionAverage: number;
-	nTransactionSum: number;
-	oneTransactionAverage: number;
-	oneTransactionSum: number;
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
 }
 
 export interface ReadByIndexResult {
-	nTransactionAverage: number;
-	nTransactionSum: number;
-	oneTransactionAverage: number;
-	oneTransactionSum: number;
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
 }
 
 export interface ReadByLimitResult {
-	nTransactionAverage: number;
-	nTransactionSum: number;
-	oneTransactionAverage: number;
-	oneTransactionSum: number;
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
 }
