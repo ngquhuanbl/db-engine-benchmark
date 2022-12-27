@@ -1,8 +1,25 @@
 import { sqlite3 } from "sqlite3";
-import { CommandData } from "./types/sqlite";
+import { CommandData } from "./types/shared/sqlite";
+import type {
+  ReadAllExtraData,
+  ReadByIndexExtraData,
+  ReadByLimitExtraData,
+  ReadByRangeExtraData,
+  ReadFromEndSourceExtraData,
+} from "./types/renderer/action";
+import {
+  ReadAllResult,
+  ReadByIndexResult,
+  ReadByLimitResult,
+  ReadByRangeResult,
+  ReadFromEndSourceResult,
+  SingleReadWriteResult,
+} from "./types/shared/result";
+import { Data } from "./types/shared/data";
+import { Message } from "./types/shared/message-port";
 
 declare global {
-  var rawSqlite3: {
+  var preloadedSQLite3: {
     Database: {
       OPEN_READONLY: number;
       OPEN_READWRITE: number;
@@ -46,11 +63,7 @@ declare global {
         params: any,
         callback?: (error: Error | null, row: any) => void
       ): void;
-      get(
-        connectionID: string,
-        sql: string,
-        ...params: any[],
-      ): void;
+      get(connectionID: string, sql: string, ...params: any[]): void;
 
       all(
         connectionID: string,
@@ -63,11 +76,7 @@ declare global {
         params: any,
         callback?: (error: Error | null, rows: any[]) => void
       ): void;
-      all(
-        connectionID: string,
-        sql: string,
-        ...params: any[],
-      ): void;
+      all(connectionID: string, sql: string, ...params: any[]): void;
 
       //   each(
       //     sql: string,
@@ -92,7 +101,11 @@ declare global {
       //     complete?: unknown,
       //     ...rest: unknown[]
       //   ): void;
-      exec(connectionID: string, sql: string, callback?: (error: Error | null) => void): Promise<void>;
+      exec(
+        connectionID: string,
+        sql: string,
+        callback?: (error: Error | null) => void
+      ): Promise<void>;
       //   prepare(
       //     sql: string,
       //     callback?: ((err: Error | null) => void) | undefined
@@ -109,7 +122,10 @@ declare global {
       //     callback?: unknown,
       //     ...rest: unknown[]
       //   ): Statement;
-      serialize(connectionID: string, callback: (conn: sqlite3.Database) => void): Promise<void>;
+      serialize(
+        connectionID: string,
+        callback: (conn: sqlite3.Database) => void
+      ): Promise<void>;
       //   parallelize(callback?: (() => void) | undefined): void;
       //   on(event: "trace", listener: (sql: string) => void): void;
       //   on(event: "profile", listener: (sql: string, time: number) => void): void;
@@ -153,5 +169,19 @@ declare global {
   var path: {
     getUserPath: () => Promise<string>;
     join: (...paths) => Promise<string>;
+  };
+  var __BUNDLENAME__: { value: string };
+  var dataLoader: {
+    getDataset: (size: number) => Promise<Data[]>;
+  };
+
+  var messageBroker: {
+    addMessageListener: (
+      listener: (event: any, message: Message) => void
+    ) => void;
+    removeMessageListener: (
+      listener: (event: any, message: Message) => void
+    ) => void;
+    sendMessage: (message: Message) => void;
   };
 }

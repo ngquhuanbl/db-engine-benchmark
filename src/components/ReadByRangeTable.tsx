@@ -29,19 +29,21 @@ import {
 import {
   ComparisonResult,
   INDEXED_DB_COLOR,
-  SQLITE_COLOR,
+  PRELOAD_SQLITE_COLOR,
   TIE_COLOR,
 } from "../constants/comparison";
 import { DEFAULT_NUM_OF_RANGE, MIN_NUM_OF_RANGE } from "../constants/dataset";
 import { READ_BY_RANGE_ORDER } from "../constants/run-all";
-import { calculateRange } from "../helpers/calculate-range";
-import { convertMsToS } from "../helpers/convert";
-import { listenToGetAllEvent, listenToRunAllEvent } from "../helpers/events";
-import { readByRange as executeIndexedDB } from "../helpers/indexedDB/actions";
-import { readByRange as executeSQLite } from "../helpers/sqlite/actions";
-import { Entries, Keys } from "../types/common";
-import { Data } from "../types/data";
-import { ReadByRangeResult } from "../types/result";
+import { calculateRange } from "../helpers/shared/calculate-range";
+import { convertMsToS } from "../helpers/shared/convert";
+import {
+  listenToGetAllEvent,
+  listenToRunAllEvent,
+} from "../helpers/shared/events";
+import { readByRange as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
+import { readByRange as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { Entries, Keys } from "../types/shared/common";
+import { ReadByRangeResult } from "../types/shared/result";
 
 const formatResult = (result: ReadByRangeResult): ReadByRangeResult => ({
   nTransactionAverage: result.nTransactionAverage
@@ -63,14 +65,14 @@ type ComparisonData = {
 };
 
 interface Props {
-  dataset: Array<Data>;
+  datasetSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
 }
 
 const ReadByRangeTable: React.FC<Props> = ({
-  dataset,
+  datasetSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -82,15 +84,17 @@ const ReadByRangeTable: React.FC<Props> = ({
     oneTransactionAverage: null,
     oneTransactionSum: null,
   });
-  const [sqliteResult, setSQLiteResult] = useState<ReadByRangeResult>({
-    nTransactionAverage: null,
-    nTransactionSum: null,
-    oneTransactionAverage: null,
-    oneTransactionSum: null,
-  });
+  const [preloadedSQLiteResult, setPreloadedSQLiteResult] =
+    useState<ReadByRangeResult>({
+      nTransactionAverage: null,
+      nTransactionSum: null,
+      oneTransactionAverage: null,
+      oneTransactionSum: null,
+    });
 
   const [isIndexedDBRunning, setIsIndexedDBRunning] = useState(false);
-  const [isSQLiteRunning, setIsSQLiteRunning] = useState(false);
+  const [isPreloadedSQLiteRunning, setIsPreloadedSQLiteRunning] =
+    useState(false);
 
   const chartOptions = useMemo<ApexOptions>(
     () => ({
@@ -146,8 +150,8 @@ const ReadByRangeTable: React.FC<Props> = ({
     }
 
     const sqliteData = [];
-    if (sqliteResult) {
-      const { nTransactionSum, oneTransactionSum } = sqliteResult;
+    if (preloadedSQLiteResult) {
+      const { nTransactionSum, oneTransactionSum } = preloadedSQLiteResult;
       sqliteData.push(nTransactionSum, oneTransactionSum);
     }
 
@@ -161,7 +165,7 @@ const ReadByRangeTable: React.FC<Props> = ({
         data: sqliteData,
       },
     ];
-  }, [indexedDBResult, sqliteResult]);
+  }, [indexedDBResult, preloadedSQLiteResult]);
 
   const comparisonData = useMemo<ComparisonData>(() => {
     const res: ComparisonData = {
@@ -173,23 +177,22 @@ const ReadByRangeTable: React.FC<Props> = ({
 
     (Object.keys(res) as Keys<ReadByRangeResult>).forEach((metricName) => {
       const indexedDBMetricValue = indexedDBResult[metricName];
-      const sqliteMetricValue = sqliteResult[metricName];
+      const sqliteMetricValue = preloadedSQLiteResult[metricName];
       if (indexedDBMetricValue !== null && sqliteMetricValue !== null) {
         if (indexedDBMetricValue < sqliteMetricValue)
           res[metricName] = ComparisonResult.INDEXED_DB;
         else if (indexedDBMetricValue > sqliteMetricValue)
-          res[metricName] = ComparisonResult.SQLITE;
+          res[metricName] = ComparisonResult.PRELOAD_SQLITE;
         else res[metricName] = ComparisonResult.TIE;
       }
     });
 
     return res;
-  }, [indexedDBResult, sqliteResult]);
+  }, [indexedDBResult, preloadedSQLiteResult]);
 
   const ranges = useMemo(() => {
-    const datasetSize = dataset.length;
     return calculateRange(datasetSize, numOfRanges);
-  }, [dataset, numOfRanges]);
+  }, [datasetSize, numOfRanges]);
 
   const toast = useToast();
 
@@ -200,7 +203,7 @@ const ReadByRangeTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(dataset, addLog, removeLog, { ranges })
+    return executeIndexedDB(addLog, removeLog, { ranges })
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -215,40 +218,41 @@ const ReadByRangeTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [toast, addLog, removeLog, ranges]);
 
-  const runSQLite = useCallback(() => {
-    setIsSQLiteRunning(true);
+  const runPreloadedSQLite = useCallback(() => {
+    setIsPreloadedSQLiteRunning(true);
 
-    return executeSQLite(dataset, addLog, removeLog, { ranges })
+    return executePreloadedSQLite(addLog, removeLog, { ranges })
       .then((result) => {
-        setSQLiteResult(formatResult(result));
+        setPreloadedSQLiteResult(formatResult(result));
       })
       .catch((e) => {
         toast({
-          title: "SQLite error",
+          title: "Preloaded SQLite error",
           description: e.message,
           status: "error",
         });
         console.error(e);
       })
       .finally(() => {
-        setIsSQLiteRunning(false);
+        setIsPreloadedSQLiteRunning(false);
       });
-  }, [dataset, toast, addLog, removeLog, ranges]);
+  }, [toast, addLog, removeLog, ranges]);
 
   useEffect(() => {
     listenToRunAllEvent(READ_BY_RANGE_ORDER, () =>
-      runIndexedDB().then(() => runSQLite())
+      runIndexedDB().then(() => runPreloadedSQLite())
     );
-  }, [runIndexedDB, runSQLite]);
+  }, [runIndexedDB, runPreloadedSQLite]);
 
   useEffect(() => {
     listenToGetAllEvent("read-by-range", () => ({
       indexedDB: indexedDBResult,
-      sqlite: sqliteResult,
+      preloadedSQLite: preloadedSQLiteResult,
+      nodeIntegrationSQLite: null,
     }));
-  }, [indexedDBResult, sqliteResult]);
+  }, [indexedDBResult, preloadedSQLiteResult]);
 
   return (
     <Flex direction="column" h="100%">
@@ -288,11 +292,11 @@ const ReadByRangeTable: React.FC<Props> = ({
               leftIcon={<ArrowRightIcon />}
               colorScheme="teal"
               size="sm"
-              isLoading={isSQLiteRunning}
-              onClick={runSQLite}
+              isLoading={isPreloadedSQLiteRunning}
+              onClick={runPreloadedSQLite}
               ml={4}
             >
-              Run SQLite
+              Run preloaded SQLite
             </Button>
           </Flex>
           <Flex flexDirection="column" alignItems="center">
@@ -365,7 +369,7 @@ const ReadByRangeTable: React.FC<Props> = ({
                     switch (comparisonResult) {
                       case ComparisonResult.TIE: {
                         bgColor = TIE_COLOR;
-						color = "white";
+                        color = "white";
                         break;
                       }
                       case ComparisonResult.INDEXED_DB: {
@@ -391,24 +395,26 @@ const ReadByRangeTable: React.FC<Props> = ({
               <Tr>
                 <Td>
                   <Flex justifyContent={"space-between"} alignItems="center">
-                    <Text>SQLite</Text>
+                    <Text>SQLite (preload)</Text>
                     <IconButton
                       colorScheme="teal"
                       icon={<ArrowRightIcon />}
                       size="sm"
-                      isLoading={isSQLiteRunning}
+                      isLoading={isPreloadedSQLiteRunning}
                       aria-label={"run SQLite"}
-                      onClick={runSQLite}
+                      onClick={runPreloadedSQLite}
                     />
                   </Flex>
                 </Td>
-                {isSQLiteRunning ? (
+                {isPreloadedSQLiteRunning ? (
                   <Td backgroundColor="gray.100" colSpan={6} textAlign="center">
                     Running...
                   </Td>
                 ) : (
                   (
-                    Object.entries(sqliteResult!) as Entries<ReadByRangeResult>
+                    Object.entries(
+                      preloadedSQLiteResult!
+                    ) as Entries<ReadByRangeResult>
                   ).map(([metricName, metricValue]) => {
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
@@ -416,11 +422,11 @@ const ReadByRangeTable: React.FC<Props> = ({
                     switch (comparisonResult) {
                       case ComparisonResult.TIE: {
                         bgColor = TIE_COLOR;
-						color = "white";
+                        color = "white";
                         break;
                       }
-                      case ComparisonResult.SQLITE: {
-                        bgColor = SQLITE_COLOR;
+                      case ComparisonResult.PRELOAD_SQLITE: {
+                        bgColor = PRELOAD_SQLITE_COLOR;
                         color = "white";
                         break;
                       }

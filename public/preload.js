@@ -1,13 +1,16 @@
 // All of the Node.js APIs are available in the preload process.
 // It has the same sandbox as a Chrome extension.
 const { contextBridge, ipcRenderer } = require("electron");
-const { USER_PATH, JOIN_PATHS } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
 const sqlite3 = require("./sqlite3");
+const {
+  DataLoaderImpl,
+} = require("./data-loader");
 
 // As an example, here we use the exposeInMainWorld API to expose the browsers
 // and node versions to the main window.
 process.once("loaded", () => {
-  contextBridge.exposeInMainWorld("rawSqlite3", {
+  contextBridge.exposeInMainWorld("preloadedSQLite3", {
     Database: {
       OPEN_READONLY: sqlite3.OPEN_READONLY,
       OPEN_READWRITE: sqlite3.OPEN_READWRITE,
@@ -30,5 +33,22 @@ process.once("loaded", () => {
   contextBridge.exposeInMainWorld("path", {
     getUserPath: () => ipcRenderer.invoke(USER_PATH),
     join: (...paths) => ipcRenderer.invoke(JOIN_PATHS, ...paths),
+  });
+  contextBridge.exposeInMainWorld("__BUNDLENAME__", { value: "renderer" });
+
+  contextBridge.exposeInMainWorld("dataLoader", {
+    getDataset: (datasetSize) => {
+      const dataLoader = DataLoaderImpl.getInstance();
+      return dataLoader.getDataset(datasetSize);
+    },
+  });
+
+  contextBridge.exposeInMainWorld("messageBroker", {
+    addMessageListener: (listener) => {
+      ipcRenderer.on(MESSAGE, listener);
+    },
+    removeMessageListener: (listener) =>
+      ipcRenderer.removeListener(MESSAGE, listener),
+    sendMessage: (message) => ipcRenderer.send(MESSAGE, message),
   });
 });

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 
-import { RepeatIcon } from "@chakra-ui/icons";
 import {
   Button,
   Container,
@@ -29,17 +28,20 @@ import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSource
 import SingleReadWriteTable from "./components/SingleReadWriteTable";
 import { DEFAULT_DATASET_SIZE, MIN_DATASET_SIZE } from "./constants/dataset";
 import { DEFAULT_CHART_VIEW_MODE_ONE } from "./constants/modes";
-import { triggerGetAllEvent, triggerRunAllEvent } from "./helpers/events";
-import { generateData } from "./helpers/generate-data";
-import { loadData } from "./helpers/indexedDB/load-data";
-import { Data } from "./types/data";
-import { LogObj } from "./types/logs";
+import {
+  triggerGetAllEvent,
+  triggerRunAllEvent,
+} from "./helpers/shared/events";
+import { loadData } from "./helpers/renderer/indexedDB/load-data";
+import { LogObj } from "./types/shared/logs";
+import { ActionTypes } from "./constants/action-types";
+import { MessageTypes } from "./constants/message";
+import { AddLogMessageResult } from "./types/shared/message-port";
 
 let logIdCounter = 0;
 
 function App() {
   const [datasetSize, setDatasetSize] = useState(DEFAULT_DATASET_SIZE);
-  const [dataset, setDataset] = useState<Data[]>([]);
 
   const [chartViewModeOn, setChartViewModeOn] = useState(
     DEFAULT_CHART_VIEW_MODE_ONE
@@ -57,7 +59,7 @@ function App() {
   const toast = useToast();
 
   const handleDatasetSizeChange = useCallback((size) => {
-    setDatasetSize(size);
+    setDatasetSize(+size);
   }, []);
 
   const addLog = useCallback((content: string) => {
@@ -72,18 +74,6 @@ function App() {
       prevState.filter(({ id: currentId }) => currentId !== id)
     );
   }, []);
-
-  const generateDataset = useCallback(async () => {
-    const logId = addLog("[common] Generate data ...");
-    setIsLoadingData(true);
-    // Generate new dataset
-    setTimeout(() => {
-      const newDataset = generateData(datasetSize);
-      setDataset(newDataset);
-      removeLog(logId);
-      setIsLoadingData(false);
-    });
-  }, [addLog, removeLog, datasetSize]);
 
   const getAllResult = useCallback(() => {
     const res = triggerGetAllEvent();
@@ -107,11 +97,38 @@ function App() {
       const size = data.length;
       if (size > 0) {
         setDatasetSize(size);
-        setDataset(data);
       }
       setIsLoadingData(false);
     });
-  }, []);
+
+    messageBroker.addMessageListener((_, request) => {
+      const { id: msgId, type: msgType } = request;
+      if (msgType === MessageTypes.REQUEST) {
+        const { type: actionType, data } = request.params;
+        switch (actionType) {
+          case ActionTypes.ADD_LOG: {
+            const { content } = data;
+            const logId = addLog(content);
+
+            const responseMessage: AddLogMessageResult = {
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              result: {
+                id: logId,
+              },
+            };
+            messageBroker.sendMessage(responseMessage);
+            break;
+          }
+          case ActionTypes.REMOVE_LOG: {
+            const { id: logId } = data;
+            removeLog(logId);
+            break;
+          }
+        }
+      }
+    });
+  }, [addLog, removeLog]);
 
   return (
     <>
@@ -146,15 +163,6 @@ function App() {
               <NumberDecrementStepper />
             </NumberInputStepper>
           </NumberInput>
-          <Button
-            isLoading={isLoadingData}
-            colorScheme="purple"
-            leftIcon={<RepeatIcon />}
-            onClick={generateDataset}
-            marginLeft={8}
-          >
-            Generate
-          </Button>
         </FormControl>
         <Flex marginBottom={4} alignItems="center">
           <Button
@@ -199,7 +207,7 @@ function App() {
         <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
           <GridItem>
             <SingleReadWriteTable
-              dataset={dataset}
+              datasetSize={datasetSize}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -207,7 +215,7 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByRangeTable
-              dataset={dataset}
+              datasetSize={datasetSize}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -215,7 +223,7 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadAllTable
-              dataset={dataset}
+              datasetSize={datasetSize}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -223,7 +231,7 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadFromTheEndOfSourceDataTable
-              dataset={dataset}
+              datasetSize={datasetSize}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -231,7 +239,6 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByIndexTable
-              dataset={dataset}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -239,7 +246,6 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByLimitTable
-              dataset={dataset}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}

@@ -1,4 +1,4 @@
-import { VALID_SQLITE_TYPE } from "../types/sqlite";
+import { VALID_SQLITE_TYPE } from "../types/shared/sqlite";
 
 export const DB_NAME = "core";
 export const TABLE_NAME = "message";
