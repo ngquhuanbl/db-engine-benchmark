@@ -150,9 +150,9 @@ export const execute = async (
   }
   //#endregion
 
-  conn.close((error) => {
-    if (error) throw error;
-  });
+  //   conn.close((error) => {
+//     if (error) throw error;
+//   });
 
   return {
     nTransactionAverage,

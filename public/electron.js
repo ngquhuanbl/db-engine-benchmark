@@ -52,7 +52,7 @@ function createNodeIntegrationWindow() {
       contextIsolation: false,
       nodeIntegration: true,
     },
-    show: false,
+    // show: false,
   });
 
   // In production, set the initial browser path to the local bundle generated

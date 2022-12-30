@@ -1,6 +1,11 @@
-
-import { DB_NAME, TABLE_NAME, COLUMN_LIST_INFO, PRIMARY_KEYS, INDEX_NAME, INDEXED_KEYS } from "../../../constants/schema";
-import { Z_OPEN_MODE } from "../../../constants/sqlite";
+import {
+  DB_NAME,
+  TABLE_NAME,
+  COLUMN_LIST_INFO,
+  PRIMARY_KEYS,
+  INDEX_NAME,
+  INDEXED_KEYS,
+} from "../../../constants/schema";
 import { escapeStr } from "../../shared/escape-str";
 import { patchJSError } from "../../shared/patch-error";
 import { getDBFilePath } from "../../shared/directory";
@@ -11,12 +16,7 @@ export function openSQLiteDatabase() {
     try {
       const fileName = await getDBFilePath(DB_NAME);
 
-      const instance = await new Promise<Database>((resolve, reject) => {
-        const res = new Database(fileName, Z_OPEN_MODE, (error: any) => {
-          if (error) reject(error);
-          else resolve(res);
-        });
-      });
+      const instance = new Database(fileName);
 
       //#region Create missing table
       const tableName = escapeStr(TABLE_NAME);
@@ -54,7 +54,7 @@ export function openSQLiteDatabase() {
 
       if (!didIndexExits) {
         await new Promise<void>((resolve, reject) => {
-          const definedFieldsSql = INDEXED_KEYS.join(' , ');
+          const definedFieldsSql = INDEXED_KEYS.join(" , ");
 
           const query: string = `CREATE INDEX ${indexName} ON ${tableName} (${definedFieldsSql})`;
           instance.run(query, (error) => (error ? reject(error) : resolve()));
@@ -75,7 +75,9 @@ export async function resetSQLiteData(conn: Database) {
     const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
     conn.exec(query, (error) =>
       error
-        ? reject(patchJSError(error, { tags: ["preload-sqlite", "reset-data"] }))
+        ? reject(
+            patchJSError(error, { tags: ["preload-sqlite", "reset-data"] })
+          )
         : resolve()
     );
   });

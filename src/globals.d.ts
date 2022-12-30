@@ -30,7 +30,6 @@ declare global {
 
       getConnectionID(
         filename: string,
-        mode?: number,
         callback?: (error: Error | null, connectionID: string) => void
       ): void;
 

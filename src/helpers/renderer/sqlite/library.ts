@@ -17,14 +17,12 @@ export class Database implements SQLite3Database {
 
   constructor(
     filename: string,
-    mode?: number,
     callback?: (err: Error | null) => void
   ) {
     this.connectionIDContainer = new AsyncContainer();
 
     preloadedSQLite3.Database.getConnectionID(
       filename,
-      mode,
       (error, connectionID) => {
         if (error) {
           this.connectionIDContainer.reject(error);

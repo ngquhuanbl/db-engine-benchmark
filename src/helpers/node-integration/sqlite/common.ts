@@ -1,4 +1,4 @@
-import { Database } from "sqlite3";
+import { Database } from "./library";
 
 import {
   COLUMN_LIST_INFO,
@@ -8,7 +8,6 @@ import {
   PRIMARY_KEYS,
   TABLE_NAME,
 } from "../../../constants/schema";
-import { Z_OPEN_MODE } from "../../../constants/sqlite";
 import { escapeStr } from "../../shared/escape-str";
 import { patchJSError } from "../../shared/patch-error";
 import { getDBFilePath } from "../../shared/directory";
@@ -18,12 +17,7 @@ export function openSQLiteDatabase() {
     try {
       const fileName = await getDBFilePath(DB_NAME);
 
-      const instance = await new Promise<Database>((resolve, reject) => {
-        const res = new Database(fileName, Z_OPEN_MODE, (error: any) => {
-          if (error) reject(error);
-          else resolve(res);
-        });
-      });
+      const instance = new Database(fileName);
 
       //#region Create missing table
       const tableName = escapeStr(TABLE_NAME);

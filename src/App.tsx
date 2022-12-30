@@ -133,7 +133,6 @@ function App() {
 
   useEffect(() => {
     dataLoader.addProgressListener((_, value) => {
-      console.log("received progress", value);
       setPrepareDataProgress(value);
     });
   }, []);

@@ -21,8 +21,8 @@ process.once("loaded", () => {
       OPEN_SHAREDCACHE: sqlite3.OPEN_SHAREDCACHE,
       OPEN_PRIVATECACHE: sqlite3.OPEN_PRIVATECACHE,
       OPEN_URI: sqlite3.OPEN_URI,
-      getConnectionID: (filename, mode, callback) =>
-        sqlite3.getConnectionID(filename, mode, callback),
+      getConnectionID: (filename, callback) =>
+        sqlite3.getConnectionID(filename, callback),
       close: (connectionID, callback) => sqlite3.close(connectionID, callback),
       run: (connectionID, ...args) => sqlite3.run(connectionID, ...args),
       get: (connectionID, ...args) => sqlite3.get(connectionID, ...args),

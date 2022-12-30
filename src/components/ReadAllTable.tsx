@@ -536,7 +536,7 @@ const ReadAllTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
+                    if (comparisonResult.includes(ComparisonResult.TIE) && metricValue !== null) {
                       bgColor = TIE_COLOR;
                       color = "white";
                     } else if (
