@@ -245,11 +245,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
       const nodeIntegrationSQLiteMetricValue =
         nodeIntegrationSQLiteResult[metricName];
 
-      if (
-        indexedDBMetricValue !== null &&
-        preloadSQLiteMetricValue !== null &&
-        nodeIntegrationSQLiteMetricValue !== null
-      ) {
+      if (indexedDBMetricValue !== null && preloadSQLiteMetricValue !== null) {
         if (indexedDBMetricValue === preloadSQLiteMetricValue)
           res[metricName].push(ComparisonResult.TIE);
         else if (indexedDBMetricValue < preloadSQLiteMetricValue)
