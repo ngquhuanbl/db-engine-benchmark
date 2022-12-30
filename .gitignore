@@ -23,3 +23,4 @@ yarn-debug.log*
 yarn-error.log*
 
 /src/tools-build
+/src/data.json

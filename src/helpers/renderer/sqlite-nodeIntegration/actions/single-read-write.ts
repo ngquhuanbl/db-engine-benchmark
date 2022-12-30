@@ -6,11 +6,9 @@ export const execute = async (
   datasetSize: number
 ): Promise<SingleReadWriteResult> => {
   return invokeMessage<SingleReadWriteResult>({
-    params: {
-      type: ActionTypes.SINGLE_READ_WRITE,
-      data: {
-        datasetSize,
-      },
+    type: ActionTypes.SINGLE_READ_WRITE,
+    data: {
+      datasetSize,
     },
   });
 };

@@ -7,7 +7,6 @@ import {
   ReadByRangeExtraData,
   ReadFromEndSourceExtraData,
 } from "./action";
-import { Data } from "./data";
 import {
   ReadAllResult,
   ReadByIndexResult,
@@ -22,7 +21,8 @@ interface BaseMessage {
   type: MessageTypes;
 }
 
-interface BasePortMessageRequest<T extends ActionTypes, D> extends BaseMessage {
+interface BasePortMessageRequest<T extends ActionTypes, D extends any>
+  extends BaseMessage {
   type: typeof MessageTypes.REQUEST;
   params: {
     type: T;

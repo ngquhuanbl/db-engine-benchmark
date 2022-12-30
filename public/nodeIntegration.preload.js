@@ -1,5 +1,6 @@
 const { ipcRenderer } = require("electron");
-const { MESSAGE } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
+const { DataLoaderImpl } = require("./data-loader");
 
 window.path = {
   getUserPath: () => ipcRenderer.invoke(USER_PATH),
@@ -9,10 +10,17 @@ window.path = {
 window.__BUNDLENAME__ = { value: "node-integration" };
 
 window.messageBroker = {
-  addEventListener: (listener) => {
+  addMessageListener: (listener) => {
     ipcRenderer.on(MESSAGE, listener);
   },
   removeMessageListener: (listener) =>
     ipcRenderer.removeListener(MESSAGE, listener),
   sendMessage: (message) => ipcRenderer.send(MESSAGE, message),
+};
+
+window.dataLoader = {
+  getDataset: (datasetSize) => {
+    const dataLoader = DataLoaderImpl.getInstance();
+    return dataLoader.getDataset(datasetSize);
+  },
 };

@@ -11,12 +11,10 @@ export const execute = async (
   }
 ): Promise<ReadFromEndSourceResult> => {
   return invokeMessage<ReadFromEndSourceResult>({
-    params: {
-      type: ActionTypes.READ_FROM_END_SOURCE,
-      data: {
-        datasetSize,
-        extraData: { readFromEndSourceCount },
-      },
+    type: ActionTypes.READ_FROM_END_SOURCE,
+    data: {
+      datasetSize,
+      extraData: { readFromEndSourceCount },
     },
   });
 };

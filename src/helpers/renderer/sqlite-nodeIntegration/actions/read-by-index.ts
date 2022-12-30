@@ -7,11 +7,9 @@ export const execute = async (
   { keys }: ReadByIndexExtraData = { keys: [] }
 ): Promise<ReadByIndexResult> => {
   return invokeMessage<ReadByIndexResult>({
-    params: {
-      type: ActionTypes.READ_BY_INDEX,
-      data: {
-        extraData: { keys },
-      },
+    type: ActionTypes.READ_BY_INDEX,
+    data: {
+      extraData: { keys },
     },
   });
 };

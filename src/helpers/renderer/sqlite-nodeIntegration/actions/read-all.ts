@@ -8,12 +8,10 @@ export const execute = async (
   { readAllCount }: ReadAllExtraData = { readAllCount: DEFAULT_READ_ALL_COUNT }
 ): Promise<ReadAllResult> => {
   return invokeMessage<ReadAllResult>({
-    params: {
-      type: ActionTypes.READ_ALL,
-      data: {
-        datasetSize,
-        extraData: { readAllCount },
-      },
+    type: ActionTypes.READ_ALL,
+    data: {
+      datasetSize,
+      extraData: { readAllCount },
     },
   });
 };

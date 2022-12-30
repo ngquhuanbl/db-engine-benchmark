@@ -4,9 +4,9 @@ import {
   PRIMARY_KEYS,
 } from "../../../../constants/schema";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
+import { DataLoaderImpl } from "../../../shared/data-loader";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
-import { DataLoaderImpl } from "../../data-loader";
 import { openSQLiteDatabase, resetSQLiteData } from "../common";
 
 export const execute = async (

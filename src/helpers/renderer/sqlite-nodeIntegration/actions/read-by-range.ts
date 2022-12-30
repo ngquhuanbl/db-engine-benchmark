@@ -7,11 +7,9 @@ export const execute = async (
   { ranges }: ReadByRangeExtraData = { ranges: [] }
 ): Promise<ReadByRangeResult> => {
   return invokeMessage<ReadByRangeResult>({
-    params: {
-      type: ActionTypes.READ_BY_RANGE,
-      data: {
-        extraData: { ranges },
-      },
+    type: ActionTypes.READ_BY_RANGE,
+    data: {
+      extraData: { ranges },
     },
   });
 };

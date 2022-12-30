@@ -14,11 +14,9 @@ export const execute = async (
   }
 ): Promise<ReadByLimitResult> => {
   return invokeMessage<ReadByLimitResult>({
-    params: {
-      type: ActionTypes.READ_BY_LIMIT,
-      data: {
-        extraData: { limit, count },
-      },
+    type: ActionTypes.READ_BY_LIMIT,
+    data: {
+      extraData: { limit, count },
     },
   });
 };

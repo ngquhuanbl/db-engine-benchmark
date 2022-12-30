@@ -2,7 +2,7 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH, JOIN_PATHS, PORT, MESSAGE } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
 
 // Create the native browser window.
 function createWindow() {
@@ -30,9 +30,9 @@ function createWindow() {
   mainWindow.loadURL(appURL);
 
   // Automatically open Chrome's DevTools in development mode.
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
-  }
+  //   if (!app.isPackaged) {
+  //     mainWindow.webContents.openDevTools();
+  //   }
 
   ipcMain.handle(USER_PATH, () => app.getPath("userData"));
   ipcMain.handle(JOIN_PATHS, (_, ...paths) => path.join(...paths));
@@ -40,7 +40,7 @@ function createWindow() {
 }
 
 // Create the native browser window.
-function createNodeIntegrationWindow(port) {
+function createNodeIntegrationWindow() {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -70,13 +70,6 @@ function createNodeIntegrationWindow(port) {
   // if (!app.isPackaged) {
   //   mainWindow.webContents.openDevTools();
   // }
-
-  ipcMain.once(PORT, (event) => {
-    const port = event.ports[0];
-    mainWindow.webContents.postMessage(PORT, null, [port]);
-    port.start();
-  });
-
   return mainWindow;
 }
 
@@ -104,6 +97,7 @@ app.whenReady().then(() => {
 
   ipcMain.on(MESSAGE, (event, message) => {
     const { sender } = event;
+
     if (sender === mainWindow.webContents) {
       nodeIntegrationWindow.webContents.send(MESSAGE, message);
     }

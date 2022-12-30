@@ -1,7 +1,7 @@
 import { TABLE_NAME } from "../../../../constants/schema";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
+import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
-import { DataLoaderImpl } from "../../data-loader";
 import { openIndexdDBDatabase, resetIndexedDBData } from "../common";
 
 export const execute = async (

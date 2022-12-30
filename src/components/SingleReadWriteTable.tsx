@@ -34,7 +34,7 @@ import {
 } from "../helpers/shared/events";
 import { singleReadWrite as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
 import { singleReadWrite as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
-import { singleReadWrite as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite/actions";
+import { singleReadWrite as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 import { Entries, Keys } from "../types/shared/common";
 import { SingleReadWriteResult } from "../types/shared/result";
 
@@ -170,8 +170,8 @@ const SingleReadWriteTable: React.FC<Props> = ({
       writeIndexedDBData.push(nTransactionWrite, oneTransactionWrite);
     }
 
-    const readSQLiteData = [];
-    const writeSQLiteData = [];
+    const readPreloadedSQLiteData = [];
+    const writePreloadedSQLiteData = [];
     if (preloadedSQLiteResult) {
       const {
         nTransactionRead,
@@ -179,8 +179,24 @@ const SingleReadWriteTable: React.FC<Props> = ({
         oneTransactionRead,
         oneTransactionWrite,
       } = preloadedSQLiteResult;
-      readSQLiteData.push(nTransactionRead, oneTransactionRead);
-      writeSQLiteData.push(nTransactionWrite, oneTransactionWrite);
+      readPreloadedSQLiteData.push(nTransactionRead, oneTransactionRead);
+      writePreloadedSQLiteData.push(nTransactionWrite, oneTransactionWrite);
+    }
+
+    const readNodeIntegrationSQLiteData = [];
+    const writeNodeIntegrationSQLiteData = [];
+    if (nodeIntegrationSQLiteResult) {
+      const {
+        nTransactionRead,
+        nTransactionWrite,
+        oneTransactionRead,
+        oneTransactionWrite,
+      } = nodeIntegrationSQLiteResult;
+      readNodeIntegrationSQLiteData.push(nTransactionRead, oneTransactionRead);
+      writeNodeIntegrationSQLiteData.push(
+        nTransactionWrite,
+        oneTransactionWrite
+      );
     }
 
     return {
@@ -190,8 +206,12 @@ const SingleReadWriteTable: React.FC<Props> = ({
           data: readIndexedDBData,
         },
         {
-          name: "SQLite",
-          data: readSQLiteData,
+          name: "SQLite (preload)",
+          data: readPreloadedSQLiteData,
+        },
+        {
+          name: "SQLite (native)",
+          data: readNodeIntegrationSQLiteData,
         },
       ],
       write: [
@@ -200,12 +220,16 @@ const SingleReadWriteTable: React.FC<Props> = ({
           data: writeIndexedDBData,
         },
         {
-          name: "SQLite",
-          data: writeSQLiteData,
+          name: "SQLite (preload)",
+          data: writePreloadedSQLiteData,
+        },
+        {
+          name: "SQLite (native)",
+          data: writeNodeIntegrationSQLiteData,
         },
       ],
     };
-  }, [indexedDBResult, preloadedSQLiteResult]);
+  }, [indexedDBResult, preloadedSQLiteResult, nodeIntegrationSQLiteResult]);
 
   const comparisonData = useMemo<ComparisonData>(() => {
     const res: ComparisonData = {
@@ -226,26 +250,40 @@ const SingleReadWriteTable: React.FC<Props> = ({
         preloadSQLiteMetricValue !== null &&
         nodeIntegrationSQLiteMetricValue !== null
       ) {
-        if (
-          indexedDBMetricValue === preloadSQLiteMetricValue &&
-          preloadSQLiteMetricValue === nodeIntegrationSQLiteMetricValue
-        )
-          res[metricName] = [ComparisonResult.TIE];
-        else {
-          const metrics = [
-            indexedDBMetricValue,
-            preloadSQLiteMetricValue,
-            nodeIntegrationSQLiteMetricValue,
-          ];
-          const min = Math.min(...metrics);
+        // if (
+        //   indexedDBMetricValue === preloadSQLiteMetricValue &&
+        //   preloadSQLiteMetricValue === nodeIntegrationSQLiteMetricValue
+        // )
+        //   res[metricName] = [ComparisonResult.TIE];
+        // else {
+        //   const metrics = [
+        //     indexedDBMetricValue,
+        //     preloadSQLiteMetricValue,
+        //     nodeIntegrationSQLiteMetricValue,
+        //   ];
+        //   const min = Math.min(...metrics);
 
-          if (min === indexedDBMetricValue)
-            res[metricName].push(ComparisonResult.INDEXED_DB);
-          if (min === preloadSQLiteMetricValue)
-            res[metricName].push(ComparisonResult.PRELOAD_SQLITE);
-          if (min === nodeIntegrationSQLiteMetricValue)
-            res[metricName].push(ComparisonResult.NODE_INTEGRATION_SQLITE);
-        }
+        //   if (min === indexedDBMetricValue)
+        //     res[metricName].push(ComparisonResult.INDEXED_DB);
+        //   if (min === preloadSQLiteMetricValue)
+        //     res[metricName].push(ComparisonResult.PRELOAD_SQLITE);
+        //   if (min === nodeIntegrationSQLiteMetricValue)
+        //     res[metricName].push(ComparisonResult.NODE_INTEGRATION_SQLITE);
+        // }
+
+        if (indexedDBMetricValue === preloadSQLiteMetricValue)
+          res[metricName].push(ComparisonResult.TIE);
+        else if (indexedDBMetricValue < preloadSQLiteMetricValue)
+          res[metricName].push(ComparisonResult.INDEXED_DB);
+        else res[metricName].push(ComparisonResult.PRELOAD_SQLITE);
+
+        const min = Math.min(
+          indexedDBMetricValue,
+          preloadSQLiteMetricValue,
+          nodeIntegrationSQLiteMetricValue
+        );
+        if (min === nodeIntegrationSQLiteMetricValue)
+          res[metricName].push(ComparisonResult.NODE_INTEGRATION_SQLITE);
       }
     });
 
@@ -297,7 +335,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite(datasetSize, addLog, removeLog)
+    return executeNodeIntegrationSQLite(datasetSize)
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -312,7 +350,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [datasetSize, toast, addLog, removeLog]);
+  }, [datasetSize, toast]);
 
   useEffect(() => {
     listenToRunAllEvent(SINGLE_READ_WRITE_ORDER, () =>
@@ -355,7 +393,17 @@ const SingleReadWriteTable: React.FC<Props> = ({
               onClick={runPreloadedSQLite}
               ml={4}
             >
-              Run preloaded SQLite
+              Run SQLite (preload)
+            </Button>
+            <Button
+              leftIcon={<ArrowRightIcon />}
+              colorScheme="gray"
+              size="sm"
+              isLoading={isNodeIntegrationSQLiteRunning}
+              onClick={runNodeIntegrationSQLite}
+              ml={4}
+            >
+              Run SQLite (native)
             </Button>
           </Flex>
           <Flex mt={4}>
@@ -384,7 +432,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
           </Flex>
         </Flex>
       ) : (
-        <TableContainer w="100%" height="285px" marginTop="auto">
+        <TableContainer w="100%" height="400px" marginTop="auto">
           <Table variant="simple">
             <TableCaption>
               Unit of measurement is <Text as="b">second</Text>.
@@ -510,9 +558,17 @@ const SingleReadWriteTable: React.FC<Props> = ({
                 )}
               </Tr>
               <Tr>
+                <Td colSpan={5} bgColor="gray.700" color="white">
+                  Metrics for reference{" "}
+                  <span role="img" aria-label="below">
+                    👇
+                  </span>
+                </Td>
+              </Tr>
+              <Tr>
                 <Td>
                   <Flex justifyContent={"space-between"} alignItems="center">
-                    <Text>SQLite (nodeIntegration)</Text>
+                    <Text>SQLite (native)</Text>
                     <IconButton
                       colorScheme="gray"
                       icon={<ArrowRightIcon />}

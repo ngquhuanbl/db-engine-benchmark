@@ -1,19 +1,15 @@
 import { MessageTypes } from "../../constants/message";
-import {
-  Message,
-  MessageRequest,
-  MessageResult,
-} from "../../types/shared/message-port";
+import { Message, MessageRequest } from "../../types/shared/message-port";
 import { getPortMessageId } from "../shared/message-port";
 
 export function invokeMessage<Result>(
-  params: Pick<MessageRequest, "params">
+  params: MessageRequest["params"]
 ): Promise<Result> {
   const msgId = getPortMessageId();
+  // @ts-ignore
   const message: MessageRequest = {
     id: msgId,
     type: MessageTypes.REQUEST,
-	// @ts-ignore
     params,
   };
   return new Promise((resolve, reject) => {
