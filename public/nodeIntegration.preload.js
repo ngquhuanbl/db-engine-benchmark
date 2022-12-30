@@ -1,6 +1,5 @@
 const { ipcRenderer } = require("electron");
-const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
-const { DataLoaderImpl } = require("./data-loader");
+const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA } = require("./channel");
 
 window.path = {
   getUserPath: () => ipcRenderer.invoke(USER_PATH),
@@ -19,8 +18,5 @@ window.messageBroker = {
 };
 
 window.dataLoader = {
-  getDataset: (datasetSize) => {
-    const dataLoader = DataLoaderImpl.getInstance();
-    return dataLoader.getDataset(datasetSize);
-  },
+  getDataset: (datasetSize) => ipcRenderer.invoke(LOAD_DATA, datasetSize),
 };

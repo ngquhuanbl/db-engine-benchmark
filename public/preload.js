@@ -1,11 +1,8 @@
 // All of the Node.js APIs are available in the preload process.
 // It has the same sandbox as a Chrome extension.
 const { contextBridge, ipcRenderer } = require("electron");
-const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA } = require("./channel");
 const sqlite3 = require("./sqlite3");
-const {
-  DataLoaderImpl,
-} = require("./data-loader");
 
 // As an example, here we use the exposeInMainWorld API to expose the browsers
 // and node versions to the main window.
@@ -37,10 +34,7 @@ process.once("loaded", () => {
   contextBridge.exposeInMainWorld("__BUNDLENAME__", { value: "renderer" });
 
   contextBridge.exposeInMainWorld("dataLoader", {
-    getDataset: (datasetSize) => {
-      const dataLoader = DataLoaderImpl.getInstance();
-      return dataLoader.getDataset(datasetSize);
-    },
+    getDataset: (datasetSize) => ipcRenderer.invoke(LOAD_DATA, datasetSize),
   });
 
   contextBridge.exposeInMainWorld("messageBroker", {

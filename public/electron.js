@@ -2,7 +2,8 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH, JOIN_PATHS, MESSAGE } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA } = require("./channel");
+const { DataLoaderImpl } = require("./data-loader");
 
 // Create the native browser window.
 function createWindow() {
@@ -92,30 +93,39 @@ function setupLocalFilesNormalizerProxy() {
 // is ready to create the browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  const mainWindow = createWindow();
-  const nodeIntegrationWindow = createNodeIntegrationWindow();
+  try {
+    const mainWindow = createWindow();
+    const nodeIntegrationWindow = createNodeIntegrationWindow();
 
-  ipcMain.on(MESSAGE, (event, message) => {
-    const { sender } = event;
+    ipcMain.on(MESSAGE, (event, message) => {
+      const { sender } = event;
 
-    if (sender === mainWindow.webContents) {
-      nodeIntegrationWindow.webContents.send(MESSAGE, message);
-    }
-    if (sender === nodeIntegrationWindow.webContents) {
-      mainWindow.webContents.send(MESSAGE, message);
-    }
-  });
+      if (sender === mainWindow.webContents) {
+        nodeIntegrationWindow.webContents.send(MESSAGE, message);
+      }
+      if (sender === nodeIntegrationWindow.webContents) {
+        mainWindow.webContents.send(MESSAGE, message);
+      }
+    });
 
-  setupLocalFilesNormalizerProxy();
+    ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
+      const dataLoader = DataLoaderImpl.getInstance();
+      return dataLoader.getDataset(datasetSize);
+    });
 
-  app.on("activate", function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-      createNodeIntegrationWindow();
-    }
-  });
+    setupLocalFilesNormalizerProxy();
+
+    app.on("activate", function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+        createNodeIntegrationWindow();
+      }
+    });
+  } catch (e) {
+    console.log(e);
+  }
 });
 
 // Quit when all windows are closed, except on macOS.
