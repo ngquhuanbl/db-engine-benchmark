@@ -2,7 +2,8 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH, JOIN_PATHS } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA, LOAD_DATA_PROGRESS } = require("./channel");
+const { DataLoaderImpl } = require("./data-loader");
 
 // Create the native browser window.
 function createWindow() {
@@ -30,12 +31,47 @@ function createWindow() {
   mainWindow.loadURL(appURL);
 
   // Automatically open Chrome's DevTools in development mode.
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
-  }
+  //   if (!app.isPackaged) {
+  //     mainWindow.webContents.openDevTools();
+  //   }
 
   ipcMain.handle(USER_PATH, () => app.getPath("userData"));
   ipcMain.handle(JOIN_PATHS, (_, ...paths) => path.join(...paths));
+  return mainWindow;
+}
+
+// Create the native browser window.
+function createNodeIntegrationWindow() {
+  const mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    // Set the path of an additional "preload" script that can be used to
+    // communicate between node-land and browser-land.
+    webPreferences: {
+      preload: path.join(__dirname, "nodeIntegration.preload.js"),
+      contextIsolation: false,
+      nodeIntegration: true,
+    },
+    show: false,
+  });
+
+  // In production, set the initial browser path to the local bundle generated
+  // by the Create React App build process.
+  // In development, set it to localhost to allow live/hot-reloading.
+  const appURL = app.isPackaged
+    ? url.format({
+        pathname: path.join(__dirname, "node-integration.html"),
+        protocol: "file:",
+        slashes: true,
+      })
+    : "http://localhost:3001";
+  mainWindow.loadURL(appURL);
+
+  // Automatically open Chrome's DevTools in development mode.
+  // if (!app.isPackaged) {
+  //   mainWindow.webContents.openDevTools();
+  // }
+  return mainWindow;
 }
 
 // Setup a local proxy to adjust the paths of requested files when loading
@@ -57,16 +93,41 @@ function setupLocalFilesNormalizerProxy() {
 // is ready to create the browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  createWindow();
-  setupLocalFilesNormalizerProxy();
+  try {
+    const mainWindow = createWindow();
+    const nodeIntegrationWindow = createNodeIntegrationWindow();
 
-  app.on("activate", function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+    ipcMain.on(MESSAGE, (event, message) => {
+      const { sender } = event;
+
+      if (sender === mainWindow.webContents) {
+        nodeIntegrationWindow.webContents.send(MESSAGE, message);
+      }
+      if (sender === nodeIntegrationWindow.webContents) {
+        mainWindow.webContents.send(MESSAGE, message);
+      }
+    });
+
+    ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
+      const dataLoader = DataLoaderImpl.getInstance();
+      return dataLoader.getDataset(datasetSize, (value) => {
+		mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
+	  });
+    });
+
+    setupLocalFilesNormalizerProxy();
+
+    app.on("activate", function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+        createNodeIntegrationWindow();
+      }
+    });
+  } catch (e) {
+    console.log('error', e);
+  }
 });
 
 // Quit when all windows are closed, except on macOS.

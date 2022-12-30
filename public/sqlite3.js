@@ -1,4 +1,4 @@
-const rawSQLite3 = require("../nativelibs/sqlite3");
+const preloadedSqlite3 = require("../nativelibs/sqlite3");
 
 let idCounter = 0;
 
@@ -6,7 +6,7 @@ class Database {
   constructor(filename, mode, callback) {
     this.id = ++idCounter;
     this.filename = filename;
-    this.instance = new rawSQLite3.Database(filename, mode, callback);
+    this.instance = new preloadedSqlite3.Database(filename, mode, callback);
   }
 
   close(callback) {
@@ -109,12 +109,12 @@ class SQLite3 {
 const sqlite3 = new SQLite3();
 
 module.exports = {
-  OPEN_READONLY: rawSQLite3.OPEN_READONLY,
-  OPEN_READWRITE: rawSQLite3.OPEN_READWRITE,
-  OPEN_CREATE: rawSQLite3.OPEN_CREATE,
-  OPEN_SHAREDCACHE: rawSQLite3.OPEN_SHAREDCACHE,
-  OPEN_PRIVATECACHE: rawSQLite3.OPEN_PRIVATECACHE,
-  OPEN_URI: rawSQLite3.OPEN_URI,
+  OPEN_READONLY: preloadedSqlite3.OPEN_READONLY,
+  OPEN_READWRITE: preloadedSqlite3.OPEN_READWRITE,
+  OPEN_CREATE: preloadedSqlite3.OPEN_CREATE,
+  OPEN_SHAREDCACHE: preloadedSqlite3.OPEN_SHAREDCACHE,
+  OPEN_PRIVATECACHE: preloadedSqlite3.OPEN_PRIVATECACHE,
+  OPEN_URI: preloadedSqlite3.OPEN_URI,
   getConnectionID: sqlite3.getConnectionID.bind(sqlite3),
   close: sqlite3.close.bind(sqlite3),
   all: sqlite3.all.bind(sqlite3),
