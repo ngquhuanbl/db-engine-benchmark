@@ -13,7 +13,7 @@ class DataLoaderImpl {
     return this.instance;
   }
 
-  getDataset(size) {
+  getDataset(size, onProgress) {
     if (size === 0) return Promise.resolve([]);
     // Check if hitting cache
     if (this.cache !== null) {
@@ -28,14 +28,25 @@ class DataLoaderImpl {
       const readStream = fs.createReadStream(filePath);
       const result = [];
       const stream = readStream.pipe(StreamArray.withParser());
+      const progressChecker = createProgressChecker(size);
       return new Promise((resolve, reject) => {
         const customResolve = (data) => {
           resolve(data);
+          setTimeout(() => {
+            onProgress(0);
+          });
           this.cache = { size, data };
         };
         stream.on("data", function (data) {
           result.push(data.value);
-          if (result.length === size) {
+          const resultLength = result.length;
+
+          const shouldUpdateProgress = progressChecker.check(resultLength);
+          if (shouldUpdateProgress) {
+            onProgress(resultLength);
+          }
+
+          if (resultLength === size) {
             customResolve(result);
             stream.destroy();
           }
@@ -52,6 +63,27 @@ class DataLoaderImpl {
       console.log(e);
     }
   }
+}
+
+function createProgressChecker(datasetSize) {
+  let gap = 0;
+  if (datasetSize <= 10) gap = Math.round(datasetSize / 2);
+  else if (datasetSize <= 1000) gap = Math.round(datasetSize / 5);
+  else gap = Math.round(datasetSize / 10);
+
+  let currentMilestore = 1;
+  const next = () => {
+    currentMilestore = Math.min(gap + currentMilestore, datasetSize);
+  };
+  return {
+    check(value) {
+      const res = value === currentMilestore;
+      if (res) {
+        next();
+      }
+      return res;
+    },
+  };
 }
 
 module.exports = {

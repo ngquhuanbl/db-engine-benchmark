@@ -2,7 +2,7 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA } = require("./channel");
+const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA, LOAD_DATA_PROGRESS } = require("./channel");
 const { DataLoaderImpl } = require("./data-loader");
 
 // Create the native browser window.
@@ -110,7 +110,9 @@ app.whenReady().then(() => {
 
     ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
       const dataLoader = DataLoaderImpl.getInstance();
-      return dataLoader.getDataset(datasetSize);
+      return dataLoader.getDataset(datasetSize, (value) => {
+		mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
+	  });
     });
 
     setupLocalFilesNormalizerProxy();
@@ -124,7 +126,7 @@ app.whenReady().then(() => {
       }
     });
   } catch (e) {
-    console.log(e);
+    console.log('error', e);
   }
 });
 

@@ -55,6 +55,7 @@ function App() {
   const [runAllProgress, setRunAllProgress] = useState(10);
 
   const [logs, setLogs] = useState<Array<LogObj>>([]);
+  const [prepareDataProgress, setPrepareDataProgress] = useState(0);
 
   const toast = useToast();
 
@@ -129,6 +130,13 @@ function App() {
       }
     });
   }, [addLog, removeLog]);
+
+  useEffect(() => {
+    dataLoader.addProgressListener((_, value) => {
+      console.log("received progress", value);
+      setPrepareDataProgress(value);
+    });
+  }, []);
 
   return (
     <>
@@ -254,7 +262,6 @@ function App() {
         </Grid>
       </Container>
       <Flex
-        marginTop="auto"
         height="68px"
         overflowY="auto"
         backgroundColor="gray.600"
@@ -278,6 +285,35 @@ function App() {
           ))}
         </Flex>
       </Flex>
+      {prepareDataProgress !== 0 && (
+        <Flex
+          height="68px"
+          backgroundColor="purple.600"
+          boxShadow="0px -7px 0px var(--chakra-colors-purple-200)"
+          padding={4}
+          position="fixed"
+          bottom="0"
+          right="0"
+          zIndex={2}
+          alignItems="baseline"
+        >
+          <Text fontSize={14} marginRight={2} fontWeight={600} color="white">
+            <span role="img" aria-label="">
+              💾
+            </span>{" "}
+            Prepare data:
+          </Text>
+          <Progress
+            hasStripe
+            isAnimated
+            size="sm"
+            w="100px"
+            colorScheme="pink"
+            value={prepareDataProgress}
+            max={datasetSize}
+          />
+        </Flex>
+      )}
     </>
   );
 }

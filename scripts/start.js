@@ -114,16 +114,7 @@ checkBrowsers(paths.appPath, isInteractive)
       tscCompileOnError,
       webpack,
     });
-    const nodeIntegrationCompiler = createCompiler({
-      appName,
-      config: configs[1],
-      devSocket,
-      urls,
-      useYarn,
-      useTypeScript,
-      tscCompileOnError,
-      webpack,
-    });
+
 
     // Load proxy config
     const proxySetting = require(paths.appPackageJson).proxy;
@@ -164,7 +155,7 @@ checkBrowsers(paths.appPath, isInteractive)
     });
 
     const nodeIntegrationDevServer = new WebpackDevServer(
-      nodeIntegrationCompiler,
+      webpack(configs[1]),
       serverConfig
     );
     // Launch WebpackDevServer.

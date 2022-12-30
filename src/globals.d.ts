@@ -173,6 +173,7 @@ declare global {
   var __BUNDLENAME__: { value: string };
   var dataLoader: {
     getDataset: (size: number) => Promise<Data[]>;
+	addProgressListener: (listener: (event: any, value: number) => void) => void;
   };
 
   var messageBroker: {
