@@ -32,7 +32,6 @@ export const execute = async (
           const readReq = indexObj.getAll(key);
           readReq.onsuccess = function () {
             const end = performance.now();
-            console.log(readReq.result.length);
             resolve(end - start);
             removeLog(logId);
           };
@@ -72,7 +71,6 @@ export const execute = async (
           const readReq = indexObj.getAll(key);
           readReq.onsuccess = function () {
             const end = performance.now();
-            console.log(readReq.result.length);
             resolve(end - start);
             removeLog(logId);
           };

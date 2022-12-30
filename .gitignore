@@ -24,3 +24,4 @@ yarn-error.log*
 
 /tools-build
 /src/data.json
+/data

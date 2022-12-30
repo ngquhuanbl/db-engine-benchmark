@@ -250,27 +250,6 @@ const SingleReadWriteTable: React.FC<Props> = ({
         preloadSQLiteMetricValue !== null &&
         nodeIntegrationSQLiteMetricValue !== null
       ) {
-        // if (
-        //   indexedDBMetricValue === preloadSQLiteMetricValue &&
-        //   preloadSQLiteMetricValue === nodeIntegrationSQLiteMetricValue
-        // )
-        //   res[metricName] = [ComparisonResult.TIE];
-        // else {
-        //   const metrics = [
-        //     indexedDBMetricValue,
-        //     preloadSQLiteMetricValue,
-        //     nodeIntegrationSQLiteMetricValue,
-        //   ];
-        //   const min = Math.min(...metrics);
-
-        //   if (min === indexedDBMetricValue)
-        //     res[metricName].push(ComparisonResult.INDEXED_DB);
-        //   if (min === preloadSQLiteMetricValue)
-        //     res[metricName].push(ComparisonResult.PRELOAD_SQLITE);
-        //   if (min === nodeIntegrationSQLiteMetricValue)
-        //     res[metricName].push(ComparisonResult.NODE_INTEGRATION_SQLITE);
-        // }
-
         if (indexedDBMetricValue === preloadSQLiteMetricValue)
           res[metricName].push(ComparisonResult.TIE);
         else if (indexedDBMetricValue < preloadSQLiteMetricValue)

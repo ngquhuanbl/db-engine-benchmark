@@ -56,7 +56,6 @@ export const execute = async (
           else {
             const end = performance.now();
             const resultLength = rows.length;
-            console.log(resultLength);
             resolve(end - start);
           }
           removeLog(logId);
@@ -118,8 +117,6 @@ export const execute = async (
               );
             } else {
               const end = performance.now();
-              const resultLength = rows.length;
-              console.log(resultLength);
               results.push(end - start);
             }
             removeLog(logId);
