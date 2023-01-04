@@ -68,7 +68,7 @@ export const execute = async (
       const addLogRequest = addLog(
         "[preloaded-sqlite][read-all][one-transaction] read all"
       );
-      conn.serialize(() => {
+      conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
             reject(

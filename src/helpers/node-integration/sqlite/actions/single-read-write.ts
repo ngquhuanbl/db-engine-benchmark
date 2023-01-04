@@ -132,7 +132,7 @@ export const execute = async (
     const start = performance.now();
     let end = -1;
     await new Promise<void>((resolve, reject) => {
-      conn.serialize(() => {
+      conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
             reject(
@@ -207,7 +207,7 @@ export const execute = async (
     const start = performance.now();
     let end = -1;
     await new Promise<void>((resolve, reject) => {
-      conn.serialize(() => {
+      conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
             reject(

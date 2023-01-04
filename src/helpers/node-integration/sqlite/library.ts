@@ -1,4 +1,4 @@
-import sqlite3, { RunResult, Statement } from "sqlite3";
+import sqlite3 from "sqlite3";
 import { NUM_READ, Z_OPEN_MODE } from "../../../constants/sqlite";
 import { ConnectionPool } from "./connection-pool";
 

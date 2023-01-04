@@ -71,7 +71,7 @@ export const execute = async (
   {
     const results: number[] = [];
     await new Promise<void>((resolve, reject) => {
-      conn.serialize(() => {
+      conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
             reject(

@@ -105,7 +105,6 @@ class ConnectionPool {
     });
   }
 
-
   get(...args) {
     return this.use(TransactionMode.READONLY, async (connection) => {
       // if (__DATABASE_DEBUG_LOG__) {
@@ -159,18 +158,11 @@ class ConnectionPool {
   use(mode, callback) {
     return new Promise((rs, rj) => {
       const handler = async (connection) => {
-        connection.activeRequests++;
         const result = callback(connection);
         if (result && result.then) {
-          return result
-            .then(rs)
-            .catch(rj)
-            .finally(() => {
-              connection.activeRequests--;
-            });
+          return result.then(rs).catch(rj);
         }
         rs(result);
-        connection.activeRequests--;
       };
       if (mode === TransactionMode.READONLY) {
         if (this.availableToRead) {
