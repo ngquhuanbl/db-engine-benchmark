@@ -5,7 +5,10 @@ import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { invokeMessage } from "../../message-port";
 
 export const execute = async (
+  benchmarkCount: number,
   datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { readFromEndSourceCount }: ReadFromEndSourceExtraData = {
     readFromEndSourceCount: DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
   }
@@ -13,7 +16,10 @@ export const execute = async (
   return invokeMessage<ReadFromEndSourceResult>({
     type: ActionTypes.READ_FROM_END_SOURCE,
     data: {
+      benchmarkCount,
       datasetSize,
+      readUsingBatch,
+      readBatchSize,
       extraData: { readFromEndSourceCount },
     },
   });

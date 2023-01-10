@@ -1,13 +1,16 @@
 import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../constants/dataset";
 import { TABLE_NAME, PRIMARY_KEYS } from "../../../../constants/schema";
 import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
   datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { readFromEndSourceCount }: ReadFromEndSourceExtraData = {
@@ -161,4 +164,23 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadFromEndSourceExtraData
+): Promise<ReadFromEndSourceResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

@@ -8,6 +8,9 @@ import { ReadByLimitResult } from "../../../../types/shared/result";
 import { invokeMessage } from "../../message-port";
 
 export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { limit, count }: ReadByLimitExtraData = {
     limit: DEFAULT_LIMIT,
     count: DEFAULT_READ_BY_LIMIT_COUNT,
@@ -16,6 +19,9 @@ export const execute = async (
   return invokeMessage<ReadByLimitResult>({
     type: ActionTypes.READ_BY_LIMIT,
     data: {
+      benchmarkCount,
+      readUsingBatch,
+      readBatchSize,
       extraData: { limit, count },
     },
   });

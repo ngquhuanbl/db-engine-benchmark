@@ -9,8 +9,11 @@ import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadByLimitExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { limit, count }: ReadByLimitExtraData = {
     limit: DEFAULT_LIMIT,
     count: DEFAULT_READ_BY_LIMIT_COUNT,
@@ -26,7 +29,7 @@ export const execute = async (
   //#region n transaction
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][read-by-limit][n-transaction] read"
+      "[nodeIntegration-sqlite][read-by-limit][n-transaction] read"
     );
     const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
     const requests: Promise<number>[] = [];
@@ -38,7 +41,11 @@ export const execute = async (
             if (error)
               reject(
                 patchJSError(error, {
-                  tags: ["nodeIntegration-sqlite", "read-by-limit", "n-transaction"],
+                  tags: [
+                    "nodeIntegration-sqlite",
+                    "read-by-limit",
+                    "n-transaction",
+                  ],
                 })
               );
             else {
@@ -61,7 +68,7 @@ export const execute = async (
     const results = await new Promise<number[]>((resolve, reject) => {
       const results: number[] = [];
       const addLogRequest = addLog(
-        "[preloaded-sqlite][read-by-limit][one-transaction] read"
+        "[nodeIntegration-sqlite][read-by-limit][one-transaction] read"
       );
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -85,7 +92,11 @@ export const execute = async (
             if (error) {
               reject(
                 patchJSError(error, {
-                  tags: ["nodeIntegration-sqlite", "read-by-limit", "1-transaction"],
+                  tags: [
+                    "nodeIntegration-sqlite",
+                    "read-by-limit",
+                    "1-transaction",
+                  ],
                 })
               );
             } else {
@@ -127,4 +138,17 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  extraData?: ReadByLimitExtraData
+): Promise<ReadByLimitResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    extraData
+  );
 };

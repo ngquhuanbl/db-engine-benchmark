@@ -1,13 +1,16 @@
 import { DEFAULT_READ_ALL_COUNT } from "../../../../constants/dataset";
 import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadAllExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadAllResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
   datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { readAllCount }: ReadAllExtraData = { readAllCount: DEFAULT_READ_ALL_COUNT }
@@ -145,4 +148,23 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadAllExtraData
+): Promise<ReadAllResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

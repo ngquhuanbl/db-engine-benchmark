@@ -1,16 +1,22 @@
 import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadByRangeExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByRangeResult } from "../../../../types/shared/result";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexdDBDatabase } from "../common";
+import { openIndexedDBDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { ranges }: ReadByRangeExtraData = { ranges: [] }
 ): Promise<ReadByRangeResult> => {
   const numOfRanges = ranges.length;
-  const dbInstance = await openIndexdDBDatabase();
+  const dbInstance = await openIndexedDBDatabase();
+
+  const durability = relaxedDurability ? "relaxed" : "default";
 
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
@@ -25,7 +31,9 @@ export const execute = async (
           const logId = addLog(
             `[idb][read-by-range][n-transaction] range ${index}`
           );
-          const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+          const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+            durability,
+          });
           const objectStore = transaction.objectStore(TABLE_NAME);
           const start = performance.now();
           const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
@@ -71,7 +79,9 @@ export const execute = async (
 
   //#region one transaction
   {
-    const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+      durability,
+    });
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests = ranges.map(
       ({ from, to }, index) =>
@@ -130,4 +140,23 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadByRangeExtraData
+): Promise<ReadByRangeResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    relaxedDurability,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

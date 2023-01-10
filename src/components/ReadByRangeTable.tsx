@@ -68,6 +68,10 @@ type ComparisonData = {
 
 interface Props {
   datasetSize: number;
+  benchmarkCount: number;
+  doesUseRelaxedDurability: boolean;
+  doesReadUsingBatch: boolean;
+  readBatchSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
@@ -75,6 +79,10 @@ interface Props {
 
 const ReadByRangeTable: React.FC<Props> = ({
   datasetSize,
+  benchmarkCount,
+  doesUseRelaxedDurability,
+  doesReadUsingBatch,
+  readBatchSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -239,7 +247,15 @@ const ReadByRangeTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(addLog, removeLog, { ranges })
+    return executeIndexedDB(
+      benchmarkCount,
+      doesUseRelaxedDurability,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      { ranges }
+    )
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -254,12 +270,28 @@ const ReadByRangeTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [toast, addLog, removeLog, ranges]);
+  }, [
+    benchmarkCount,
+    doesUseRelaxedDurability,
+    doesReadUsingBatch,
+    readBatchSize,
+    toast,
+    addLog,
+    removeLog,
+    ranges,
+  ]);
 
   const runPreloadedSQLite = useCallback(() => {
     setIsPreloadedSQLiteRunning(true);
 
-    return executePreloadedSQLite(addLog, removeLog, { ranges })
+    return executePreloadedSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      { ranges }
+    )
       .then((result) => {
         setPreloadedSQLiteResult(formatResult(result));
       })
@@ -274,12 +306,25 @@ const ReadByRangeTable: React.FC<Props> = ({
       .finally(() => {
         setIsPreloadedSQLiteRunning(false);
       });
-  }, [toast, addLog, removeLog, ranges]);
+  }, [
+    benchmarkCount,
+    doesReadUsingBatch,
+    readBatchSize,
+    toast,
+    addLog,
+    removeLog,
+    ranges,
+  ]);
 
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite({ ranges })
+    return executeNodeIntegrationSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      { ranges }
+    )
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -294,7 +339,7 @@ const ReadByRangeTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [ranges, toast]);
+  }, [doesReadUsingBatch, readBatchSize, benchmarkCount, ranges, toast]);
 
   useEffect(() => {
     listenToRunAllEvent(READ_BY_RANGE_ORDER, () =>
@@ -400,10 +445,10 @@ const ReadByRangeTable: React.FC<Props> = ({
                 </Th>
               </Tr>
               <Tr>
-                <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
                 <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
+                <Th textAlign="center">Read (Total)</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -540,10 +585,7 @@ const ReadByRangeTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
-                      bgColor = TIE_COLOR;
-                      color = "white";
-                    } else if (
+                    if (
                       comparisonResult.includes(
                         ComparisonResult.NODE_INTEGRATION_SQLITE
                       )

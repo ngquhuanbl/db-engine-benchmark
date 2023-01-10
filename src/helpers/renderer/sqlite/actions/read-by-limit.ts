@@ -4,12 +4,15 @@ import {
 } from "../../../../constants/dataset";
 import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadByLimitExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByLimitResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { limit, count }: ReadByLimitExtraData = {
@@ -128,4 +131,21 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadByLimitExtraData
+): Promise<ReadByLimitResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

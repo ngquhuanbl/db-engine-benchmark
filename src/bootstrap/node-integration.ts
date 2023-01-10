@@ -23,8 +23,14 @@ messageBroker.addMessageListener(function (_, request) {
     const { type: actionType, data: dataObj } = request.params;
     switch (actionType) {
       case ActionTypes.SINGLE_READ_WRITE: {
-        const { datasetSize } = dataObj;
-        singleReadWrite(datasetSize)
+        const { datasetSize, benchmarkCount, readUsingBatch, readBatchSize } =
+          dataObj;
+        singleReadWrite(
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize
+        )
           .then((result) => {
             const message: SingleReadWriteMessageResult = {
               id: msgId,
@@ -43,8 +49,20 @@ messageBroker.addMessageListener(function (_, request) {
         break;
       }
       case ActionTypes.READ_ALL: {
-        const { datasetSize, extraData } = dataObj;
-        readAll(datasetSize, extraData)
+        const {
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize,
+          extraData,
+        } = dataObj;
+        readAll(
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize,
+          extraData
+        )
           .then((result) => {
             const message: ReadAllMessageResult = {
               id: msgId,
@@ -63,8 +81,9 @@ messageBroker.addMessageListener(function (_, request) {
         break;
       }
       case ActionTypes.READ_BY_INDEX: {
-        const { extraData } = dataObj;
-        readByIndex(extraData)
+        const { benchmarkCount, readUsingBatch, readBatchSize, extraData } =
+          dataObj;
+        readByIndex(benchmarkCount, readUsingBatch, readBatchSize, extraData)
           .then((result) => {
             const message: ReadByIndexMessageResult = {
               id: msgId,
@@ -83,8 +102,9 @@ messageBroker.addMessageListener(function (_, request) {
         break;
       }
       case ActionTypes.READ_BY_LIMIT: {
-        const { extraData } = dataObj;
-        readByLimit(extraData)
+        const { benchmarkCount, readUsingBatch, readBatchSize, extraData } =
+          dataObj;
+        readByLimit(benchmarkCount, readUsingBatch, readBatchSize, extraData)
           .then((result) => {
             const message: ReadByLimitMessageResult = {
               id: msgId,
@@ -103,8 +123,9 @@ messageBroker.addMessageListener(function (_, request) {
         break;
       }
       case ActionTypes.READ_BY_RANGE: {
-        const { extraData } = dataObj;
-        readByRange(extraData)
+        const { benchmarkCount, readUsingBatch, readBatchSize, extraData } =
+          dataObj;
+        readByRange(benchmarkCount, readUsingBatch, readBatchSize, extraData)
           .then((result) => {
             const message: ReadByRangeMessageResult = {
               id: msgId,
@@ -123,8 +144,20 @@ messageBroker.addMessageListener(function (_, request) {
         break;
       }
       case ActionTypes.READ_FROM_END_SOURCE: {
-        const { datasetSize, extraData } = dataObj;
-        readFromEndSourceCount(datasetSize, extraData)
+        const {
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize,
+          extraData,
+        } = dataObj;
+        readFromEndSourceCount(
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize,
+          extraData
+        )
           .then((result) => {
             const message: ReadFromEndSourceMessageResult = {
               id: msgId,

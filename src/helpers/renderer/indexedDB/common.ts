@@ -2,7 +2,7 @@ import { DB_NAME, TABLE_NAME, PRIMARY_KEYS, INDEX_NAME, INDEXED_KEYS } from "../
 import { firstOrArray } from "../../shared/firstOrArray";
 
 
-export async function openIndexdDBDatabase(): Promise<IDBDatabase> {
+export async function openIndexedDBDatabase(): Promise<IDBDatabase> {
   const openReq = indexedDB.open(DB_NAME);
   return new Promise<IDBDatabase>((resolve, reject) => {
     openReq.onupgradeneeded = function () {

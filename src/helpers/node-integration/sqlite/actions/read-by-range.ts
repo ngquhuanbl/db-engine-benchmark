@@ -5,8 +5,11 @@ import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadByRangeExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { ranges }: ReadByRangeExtraData = { ranges: [] }
 ): Promise<ReadByRangeResult> => {
   const numOfRanges = ranges.length;
@@ -33,7 +36,7 @@ export const execute = async (
       )} WHERE ${primaryKeyConditions.join(" AND ")}`;
       return new Promise<number>((resolve, reject) => {
         const addLogRequest = addLog(
-          `[preloaded-sqlite][read-by-range][n-transaction] range ${index}`
+          `[nodeIntegration-sqlite][read-by-range][n-transaction] range ${index}`
         );
         const start = performance.now();
         conn.all(query, params, (error, rows) => {
@@ -54,7 +57,7 @@ export const execute = async (
             const size = +to - +from + 1;
             if (size !== resultLength) {
               console.error(
-                `[preloaded-sqlite][read-by-range][n-transaction] range ${index} - unmatched checksum`,
+                `[nodeIntegration-sqlite][read-by-range][n-transaction] range ${index} - unmatched checksum`,
                 {
                   from,
                   to,
@@ -107,7 +110,7 @@ export const execute = async (
             TABLE_NAME
           )} WHERE ${primaryKeyConditions.join(" AND ")}`;
           const addLogRequest = addLog(
-            `[preloaded-sqlite][read-by-range][one-transaction] range ${index}`
+            `[nodeIntegration-sqlite][read-by-range][one-transaction] range ${index}`
           );
           const start = performance.now();
           conn.all(query, params, (error, rows) => {
@@ -128,7 +131,7 @@ export const execute = async (
               const size = +to - +from + 1;
               if (size !== resultLength) {
                 console.error(
-                  `[preloaded-sqlite][read-by-range][1-transaction] range ${index} - unmatched checksum`,
+                  `[nodeIntegration-sqlite][read-by-range][1-transaction] range ${index} - unmatched checksum`,
                   {
                     from,
                     to,
@@ -177,4 +180,17 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  extraData?: ReadByRangeExtraData
+): Promise<ReadByRangeResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    extraData
+  );
 };

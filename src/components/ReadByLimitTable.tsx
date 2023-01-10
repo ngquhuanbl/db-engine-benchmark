@@ -72,12 +72,20 @@ type ComparisonData = {
 };
 
 interface Props {
+  benchmarkCount: number;
+  doesUseRelaxedDurability: boolean;
+  doesReadUsingBatch: boolean;
+  readBatchSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
 }
 
 const ReadByLimitTable: React.FC<Props> = ({
+  benchmarkCount,
+  doesUseRelaxedDurability,
+  doesReadUsingBatch,
+  readBatchSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -244,10 +252,18 @@ const ReadByLimitTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(addLog, removeLog, {
-      count: readCount,
-      limit,
-    })
+    return executeIndexedDB(
+      benchmarkCount,
+      doesUseRelaxedDurability,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      {
+        count: readCount,
+        limit,
+      }
+    )
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -262,15 +278,32 @@ const ReadByLimitTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [toast, addLog, removeLog, readCount, limit]);
+  }, [
+    doesUseRelaxedDurability,
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+    readCount,
+    limit,
+  ]);
 
   const runPreloadedSQLite = useCallback(() => {
     setIsPreloadedSQLiteRunning(true);
 
-    return executePreloadedSQLite(addLog, removeLog, {
-      count: readCount,
-      limit,
-    })
+    return executePreloadedSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      {
+        count: readCount,
+        limit,
+      }
+    )
       .then((result) => {
         setPreloadedSQLiteResult(formatResult(result));
       })
@@ -285,15 +318,29 @@ const ReadByLimitTable: React.FC<Props> = ({
       .finally(() => {
         setIsPreloadedSQLiteRunning(false);
       });
-  }, [toast, addLog, removeLog, readCount, limit]);
+  }, [
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+    readCount,
+    limit,
+  ]);
 
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite({
-      count: readCount,
-      limit,
-    })
+    return executeNodeIntegrationSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      {
+        count: readCount,
+        limit,
+      }
+    )
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -308,7 +355,14 @@ const ReadByLimitTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [readCount, limit, toast]);
+  }, [
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    readCount,
+    limit,
+    toast,
+  ]);
 
   useEffect(() => {
     listenToRunAllEvent(READ_BY_LIMIT_ORDER, () =>
@@ -438,10 +492,10 @@ const ReadByLimitTable: React.FC<Props> = ({
                 </Th>
               </Tr>
               <Tr>
-                <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
                 <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
+                <Th textAlign="center">Read (Total)</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -578,10 +632,7 @@ const ReadByLimitTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
-                      bgColor = TIE_COLOR;
-                      color = "white";
-                    } else if (
+                    if (
                       comparisonResult.includes(
                         ComparisonResult.NODE_INTEGRATION_SQLITE
                       )

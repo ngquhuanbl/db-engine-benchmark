@@ -6,9 +6,12 @@ import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadAllExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 
-export const execute = async (
+const originalExecute = async (
   datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { readAllCount }: ReadAllExtraData = { readAllCount: DEFAULT_READ_ALL_COUNT }
 ): Promise<ReadAllResult> => {
   const conn = await openSQLiteDatabase();
@@ -21,7 +24,7 @@ export const execute = async (
   //#region n transaction
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][read-all][n-transaction] read all"
+      "[nodeIntegration-sqlite][read-all][n-transaction] read all"
     );
     const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
     const requests: Promise<number>[] = [];
@@ -41,7 +44,7 @@ export const execute = async (
               const resultLength = rows.length;
               if (rows.length !== datasetSize) {
                 console.error(
-                  "[preloaded-sqlite][read-all][n-transaction] wrong result",
+                  "[nodeIntegration-sqlite][read-all][n-transaction] wrong result",
                   {
                     resultLength,
                     datasetSize,
@@ -66,7 +69,7 @@ export const execute = async (
     const results = await new Promise<number[]>((resolve, reject) => {
       const results: number[] = [];
       const addLogRequest = addLog(
-        "[preloaded-sqlite][read-all][one-transaction] read all"
+        "[nodeIntegration-sqlite][read-all][one-transaction] read all"
       );
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -99,7 +102,7 @@ export const execute = async (
               const resultLength = rows.length;
               if (resultLength !== datasetSize) {
                 console.error(
-                  "[preloaded-sqlite][read-all][one-transaction] wrong result",
+                  "[nodeIntegration-sqlite][read-all][one-transaction] wrong result",
                   {
                     resultLength,
                     datasetSize,
@@ -144,4 +147,19 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  extraData?: ReadAllExtraData
+): Promise<ReadAllResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    readUsingBatch,
+    readBatchSize,
+    extraData
+  );
 };

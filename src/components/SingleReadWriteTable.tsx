@@ -40,6 +40,10 @@ import { SingleReadWriteResult } from "../types/shared/result";
 
 interface Props {
   datasetSize: number;
+  benchmarkCount: number;
+  doesUseRelaxedDurability: boolean;
+  doesReadUsingBatch: boolean;
+  readBatchSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
@@ -76,6 +80,10 @@ const formatResult = (
 
 const SingleReadWriteTable: React.FC<Props> = ({
   datasetSize,
+  benchmarkCount,
+  doesUseRelaxedDurability,
+  doesReadUsingBatch,
+  readBatchSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -271,10 +279,18 @@ const SingleReadWriteTable: React.FC<Props> = ({
 
   const toast = useToast();
 
-  const runIndexedDB = useCallback(() => {
+  const runIndexedDB = useCallback(async () => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(datasetSize, addLog, removeLog)
+    return executeIndexedDB(
+      benchmarkCount,
+      datasetSize,
+      doesUseRelaxedDurability,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog
+    )
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -289,12 +305,28 @@ const SingleReadWriteTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [datasetSize, toast, addLog, removeLog]);
+  }, [
+    datasetSize,
+    doesUseRelaxedDurability,
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+  ]);
 
   const runPreloadedSQLite = useCallback(() => {
     setIsPreloadedSQLiteRunning(true);
 
-    return executePreloadedSQLite(datasetSize, addLog, removeLog)
+    return executePreloadedSQLite(
+      benchmarkCount,
+      datasetSize,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog
+    )
       .then((result) => {
         setPreloadedSQLiteResult(formatResult(result));
       })
@@ -309,12 +341,25 @@ const SingleReadWriteTable: React.FC<Props> = ({
       .finally(() => {
         setIsPreloadedSQLiteRunning(false);
       });
-  }, [datasetSize, toast, addLog, removeLog]);
+  }, [
+    datasetSize,
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+  ]);
 
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite(datasetSize)
+    return executeNodeIntegrationSQLite(
+      benchmarkCount,
+      datasetSize,
+      doesReadUsingBatch,
+      readBatchSize
+    )
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -329,7 +374,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [datasetSize, toast]);
+  }, [datasetSize, doesReadUsingBatch, readBatchSize, benchmarkCount, toast]);
 
   useEffect(() => {
     listenToRunAllEvent(SINGLE_READ_WRITE_ORDER, () =>
@@ -571,10 +616,7 @@ const SingleReadWriteTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
-                      bgColor = TIE_COLOR;
-                      color = "white";
-                    } else if (
+                    if (
                       comparisonResult.includes(
                         ComparisonResult.NODE_INTEGRATION_SQLITE
                       )

@@ -2,19 +2,25 @@ import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../cons
 import { TABLE_NAME } from "../../../../constants/schema";
 
 import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexdDBDatabase } from "../common";
+import { openIndexedDBDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
   datasetSize: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { readFromEndSourceCount }: ReadFromEndSourceExtraData = {
     readFromEndSourceCount: DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
   }
 ): Promise<ReadFromEndSourceResult> => {
-  const dbInstance = await openIndexdDBDatabase();
+  const dbInstance = await openIndexedDBDatabase();
+
+  const durability = relaxedDurability ? "relaxed" : "default";
 
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
@@ -28,7 +34,9 @@ export const execute = async (
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       requests.push(
         new Promise<number>((resolve, reject) => {
-          const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+          const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+            durability,
+          });
           const objectStore = transaction.objectStore(TABLE_NAME);
           const start = performance.now();
           const readReq = objectStore.openCursor(undefined, "prev");
@@ -74,7 +82,9 @@ export const execute = async (
   //#region one transaction
   {
     const logId = addLog("[idb][read-from-end-source][one-transaction] read");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+      durability,
+    });
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests: Promise<number>[] = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
@@ -126,4 +136,25 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadFromEndSourceExtraData
+): Promise<ReadFromEndSourceResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    relaxedDurability,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

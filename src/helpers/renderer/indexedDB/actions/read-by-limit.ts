@@ -4,11 +4,15 @@ import {
 } from "../../../../constants/dataset";
 import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadByLimitExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByLimitResult } from "../../../../types/shared/result";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexdDBDatabase } from "../common";
+import { openIndexedDBDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { limit, count }: ReadByLimitExtraData = {
@@ -16,7 +20,9 @@ export const execute = async (
     count: DEFAULT_READ_BY_LIMIT_COUNT,
   }
 ): Promise<ReadByLimitResult> => {
-  const dbInstance = await openIndexdDBDatabase();
+  const dbInstance = await openIndexedDBDatabase();
+
+  const durability = relaxedDurability ? "relaxed" : "default";
 
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
@@ -30,7 +36,9 @@ export const execute = async (
     for (let i = 0; i < count; i += 1) {
       requests.push(
         new Promise<number>((resolve, reject) => {
-          const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+          const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+            durability,
+          });
           const objectStore = transaction.objectStore(TABLE_NAME);
           const start = performance.now();
           const readReq = objectStore.openCursor();
@@ -70,7 +78,9 @@ export const execute = async (
   //#region one transaction
   {
     const logId = addLog("[idb][read-by-limit][one-transaction] read");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readonly");
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+      durability,
+    });
     const objectStore = transaction.objectStore(TABLE_NAME);
     const requests: Promise<number>[] = [];
     for (let i = 0; i < count; i += 1) {
@@ -117,4 +127,23 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadByLimitExtraData
+): Promise<ReadByLimitResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    relaxedDurability,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

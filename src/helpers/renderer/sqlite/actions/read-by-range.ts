@@ -1,11 +1,14 @@
 import { PRIMARY_KEYS, TABLE_NAME } from "../../../../constants/schema";
 import { ReadByRangeExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByRangeResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { ranges }: ReadByRangeExtraData = { ranges: [] }
@@ -178,4 +181,21 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadByRangeExtraData
+): Promise<ReadByRangeResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Button,
   Container,
+  Divider,
   Flex,
   FormControl,
   FormLabel,
@@ -26,13 +27,23 @@ import ReadByLimitTable from "./components/ReadByLimitTable";
 import ReadByRangeTable from "./components/ReadByRangeTable";
 import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
 import SingleReadWriteTable from "./components/SingleReadWriteTable";
-import { DEFAULT_DATASET_SIZE, MIN_DATASET_SIZE } from "./constants/dataset";
-import { DEFAULT_CHART_VIEW_MODE_ONE } from "./constants/modes";
+import {
+  DEFAULT_BENCHMARK_COUNT,
+  DEFAULT_DATASET_SIZE,
+  DEFAULT_READ_BATCH_SIZE,
+  MIN_BENCHMARK_COUNT,
+  MIN_DATASET_SIZE,
+} from "./constants/dataset";
+import {
+  DEFAULT_CHART_VIEW_MODE_ONE,
+  DEFAULT_READ_USING_BATCH,
+  DEFAULT_RELAXED_DURABILITY_MODE_ON,
+} from "./constants/modes";
 import {
   triggerGetAllEvent,
   triggerRunAllEvent,
 } from "./helpers/shared/events";
-import { loadData } from "./helpers/renderer/indexedDB/load-data";
+import { checkDatasetSize } from "./helpers/renderer/indexedDB/check-dataset-size";
 import { LogObj } from "./types/shared/logs";
 import { ActionTypes } from "./constants/action-types";
 import { MessageTypes } from "./constants/message";
@@ -42,6 +53,8 @@ let logIdCounter = 0;
 
 function App() {
   const [datasetSize, setDatasetSize] = useState(DEFAULT_DATASET_SIZE);
+  const [benchmarkCount, setBenchmarkCount] = useState(DEFAULT_BENCHMARK_COUNT);
+  const [readBatchSize, setReadBatchSize] = useState(DEFAULT_READ_BATCH_SIZE);
 
   const [chartViewModeOn, setChartViewModeOn] = useState(
     DEFAULT_CHART_VIEW_MODE_ONE
@@ -50,7 +63,21 @@ function App() {
     setChartViewModeOn(event.target.checked);
   }, []);
 
-  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [doesReadUsingBatch, setDoesReadUsingBatch] = useState(
+    DEFAULT_READ_USING_BATCH
+  );
+  const handleReadUsingBatchModeChange = useCallback((event) => {
+    setDoesReadUsingBatch(event.target.checked);
+  }, []);
+
+  const [doesUseRelaxedDurability, setDoesUseRelaxedDurability] = useState(
+    DEFAULT_RELAXED_DURABILITY_MODE_ON
+  );
+  const handleUseRelaxedDurabilityModeChange = useCallback((event) => {
+    setDoesUseRelaxedDurability(event.target.checked);
+  }, []);
+
+  const [isCheckingDatasetSize, setIsCheckingDatasetSize] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [runAllProgress, setRunAllProgress] = useState(10);
 
@@ -62,6 +89,16 @@ function App() {
   const handleDatasetSizeChange = useCallback((size) => {
     setDatasetSize(+size);
   }, []);
+
+  const handleBenchmarkCountChange = useCallback(
+    (count) => setBenchmarkCount(+count),
+    []
+  );
+
+  const handleReadBatchSizeChange = useCallback(
+    (size) => setReadBatchSize(+size),
+    []
+  );
 
   const addLog = useCallback((content: string) => {
     const id = logIdCounter++;
@@ -93,13 +130,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setIsLoadingData(true);
-    loadData().then((data) => {
-      const size = data.length;
+    setIsCheckingDatasetSize(true);
+    checkDatasetSize().then((size) => {
       if (size > 0) {
         setDatasetSize(size);
       }
-      setIsLoadingData(false);
+      setIsCheckingDatasetSize(false);
     });
 
     messageBroker.addMessageListener((_, request) => {
@@ -154,24 +190,108 @@ function App() {
             🧪
           </span>
         </Heading>
-        <FormControl display="flex" alignItems="center" marginBottom={4}>
-          <FormLabel margin="0" marginRight="4">
-            Dataset size (n):
-          </FormLabel>
-          <NumberInput
-            min={MIN_DATASET_SIZE}
-            flexGrow={1}
-            value={datasetSize}
-            onChange={handleDatasetSizeChange}
-            isDisabled={isLoadingData}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-        </FormControl>
+        <Grid
+          templateColumns="repeat(2, 1fr)"
+          templateRows="repeat(3, 1fr)"
+          gap={4}
+        >
+          <GridItem colStart={1} rowStart={1}>
+            <FormControl display="flex" alignItems="center">
+              <FormLabel margin="0" mr={4}>
+                Dataset size:
+              </FormLabel>
+              <NumberInput
+                min={MIN_DATASET_SIZE}
+                flexGrow={1}
+                value={datasetSize}
+                onChange={handleDatasetSizeChange}
+                isDisabled={isCheckingDatasetSize}
+              >
+                <NumberInputField />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+            </FormControl>
+          </GridItem>
+          <GridItem colStart={2} rowStart={1}>
+            <FormControl display="flex" alignItems="center">
+              <FormLabel margin="0" mr={4}>
+                Benchmark count:
+              </FormLabel>
+              <NumberInput
+                min={MIN_BENCHMARK_COUNT}
+                flexGrow={1}
+                value={benchmarkCount}
+                onChange={handleBenchmarkCountChange}
+              >
+                <NumberInputField />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+            </FormControl>
+          </GridItem>
+          <GridItem colStart={1} rowStart={2}>
+            <FormControl display="flex" alignItems="center" w="unset" h="100%">
+              <FormLabel htmlFor="chart-view" mb="0">
+                Chart view:
+              </FormLabel>
+              <Switch
+                id="chart-view"
+                isChecked={chartViewModeOn}
+                onChange={handleChartViewModeOnChange}
+              />
+            </FormControl>
+          </GridItem>
+          <GridItem colStart={2} rowStart={2}>
+            <FormControl display="flex" alignItems="center" w="unset" h="100%">
+              <FormLabel htmlFor="chart-view" mb="0">
+                Relaxed durability:
+              </FormLabel>
+              <Switch
+                id="relaxed-durability"
+                isChecked={doesUseRelaxedDurability}
+                onChange={handleUseRelaxedDurabilityModeChange}
+              />
+            </FormControl>
+          </GridItem>
+          <GridItem colStart={1} rowStart={3}>
+            <FormControl display="flex" alignItems="center" w="unset" h="100%">
+              <FormLabel htmlFor="chart-view" mb="0">
+                Read using batch:
+              </FormLabel>
+              <Switch
+                id="read-batch"
+                isChecked={doesReadUsingBatch}
+                onChange={handleReadUsingBatchModeChange}
+              />
+            </FormControl>
+          </GridItem>
+          {doesReadUsingBatch && (
+            <GridItem colStart={2} rowStart={3}>
+              <FormControl display="flex" alignItems="center">
+                <FormLabel margin="0" mr={4}>
+                  Batch size:
+                </FormLabel>
+                <NumberInput
+                  flexGrow={1}
+                  value={readBatchSize}
+                  onChange={handleReadBatchSizeChange}
+                >
+                  <NumberInputField />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+              </FormControl>
+            </GridItem>
+          )}
+        </Grid>
+        <Divider mt={4} mb={4} />
         <Flex marginBottom={4} alignItems="center">
           <Button
             onClick={runAll}
@@ -201,21 +321,15 @@ function App() {
               📄
             </span>
           </Button>
-          <FormControl display="flex" alignItems="center" ml="auto" w="unset">
-            <FormLabel htmlFor="chart-view" mb="0">
-              Chart view:
-            </FormLabel>
-            <Switch
-              id="chart-view"
-              isChecked={chartViewModeOn}
-              onChange={handleChartViewModeOnChange}
-            />
-          </FormControl>
         </Flex>
         <Grid width="100%" templateColumns="repeat(2, 1fr)" gap={8}>
           <GridItem>
             <SingleReadWriteTable
               datasetSize={datasetSize}
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -224,6 +338,10 @@ function App() {
           <GridItem>
             <ReadByRangeTable
               datasetSize={datasetSize}
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -232,6 +350,10 @@ function App() {
           <GridItem>
             <ReadAllTable
               datasetSize={datasetSize}
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -240,6 +362,10 @@ function App() {
           <GridItem>
             <ReadFromTheEndOfSourceDataTable
               datasetSize={datasetSize}
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -247,6 +373,10 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByIndexTable
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}
@@ -254,6 +384,10 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByLimitTable
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
               addLog={addLog}
               removeLog={removeLog}
               chartViewModeOn={chartViewModeOn}

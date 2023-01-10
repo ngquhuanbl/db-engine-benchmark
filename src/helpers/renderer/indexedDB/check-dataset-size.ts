@@ -1,20 +1,19 @@
 
 import { TABLE_NAME } from "../../../constants/schema";
-import { Data } from "../../../types/shared/data";
-import { openIndexdDBDatabase } from "./common";
+import { openIndexedDBDatabase } from "./common";
 
-export async function loadData(): Promise<Data[]> {
-	const dbInstance = await openIndexdDBDatabase()
+export async function checkDatasetSize(): Promise<number> {
+	const dbInstance = await openIndexedDBDatabase()
 	const transaction = dbInstance.transaction(TABLE_NAME, 'readonly');
 	const objectStore = transaction.objectStore(TABLE_NAME);
-	return new Promise<Data[]>((resolve) => {
-		const getReq = objectStore.getAll();
+	return new Promise<number>((resolve) => {
+		const getReq = objectStore.count();
 		getReq.onsuccess = function() {
 			resolve(getReq.result);
 		}
 		getReq.onerror = function() {
 			console.error('Failed to load data!', getReq.error);
-			resolve([]);
+			resolve(0);
 		}
 	});
 }

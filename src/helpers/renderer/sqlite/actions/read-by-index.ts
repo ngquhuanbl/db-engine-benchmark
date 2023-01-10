@@ -4,12 +4,15 @@ import {
   INDEX_NAME,
 } from "../../../../constants/schema";
 import { ReadByIndexExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByIndexResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
   { keys }: ReadByIndexExtraData = { keys: [] }
@@ -157,4 +160,21 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void,
+  extraData?: ReadByIndexExtraData
+): Promise<ReadByIndexResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog,
+    extraData
+  );
 };

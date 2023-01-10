@@ -46,32 +46,64 @@ export type RemoveLogMessageRequest = BasePortMessageRequest<
 
 export type SingleReadWriteMessageRequest = BasePortMessageRequest<
   ActionTypes.SINGLE_READ_WRITE,
-  { datasetSize: number }
+  {
+    benchmarkCount: number;
+    datasetSize: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+  }
 >;
 
 export type ReadAllMessageRequest = BasePortMessageRequest<
   ActionTypes.READ_ALL,
-  { datasetSize: number; extraData: ReadAllExtraData }
+  {
+    benchmarkCount: number;
+    datasetSize: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadAllExtraData;
+  }
 >;
 
 export type ReadByIndexMessageRequest = BasePortMessageRequest<
   ActionTypes.READ_BY_INDEX,
-  { extraData: ReadByIndexExtraData }
+  {
+    benchmarkCount: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadByIndexExtraData;
+  }
 >;
 
 export type ReadByLimitMessageRequest = BasePortMessageRequest<
   ActionTypes.READ_BY_LIMIT,
-  { extraData: ReadByLimitExtraData }
+  {
+    benchmarkCount: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadByLimitExtraData;
+  }
 >;
 
 export type ReadByRangeMessageRequest = BasePortMessageRequest<
   ActionTypes.READ_BY_RANGE,
-  { extraData: ReadByRangeExtraData }
+  {
+    benchmarkCount: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadByRangeExtraData;
+  }
 >;
 
 export type ReadFromEndSourceMessageRequest = BasePortMessageRequest<
   ActionTypes.READ_FROM_END_SOURCE,
-  { datasetSize: number; extraData: ReadFromEndSourceExtraData }
+  {
+    benchmarkCount: number;
+    datasetSize: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadFromEndSourceExtraData;
+  }
 >;
 
 export type MessageRequest =

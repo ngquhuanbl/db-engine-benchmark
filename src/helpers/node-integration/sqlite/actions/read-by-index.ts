@@ -9,8 +9,11 @@ import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadByIndexExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 
-export const execute = async (
+const originalExecute = async (
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { keys }: ReadByIndexExtraData = { keys: [] }
 ): Promise<ReadByIndexResult> => {
   const numOfKeys = keys.length;
@@ -37,7 +40,7 @@ export const execute = async (
       )}`;
       return new Promise<number>((resolve, reject) => {
         const addLogRequest = addLog(
-          `[preloaded-sqlite][read-by-index][n-transaction] index ${index}`
+          `[nodeIntegration-sqlite][read-by-index][n-transaction] index ${index}`
         );
         const start = performance.now();
         conn.all(query, params, (error, rows) => {
@@ -99,7 +102,7 @@ export const execute = async (
             INDEX_NAME
           )} WHERE ${indexedKeyConditions.join(" AND ")}`;
           const addLogRequest = addLog(
-            `[preloaded-sqlite][read-by-index][one-transaction] index ${index}`
+            `[nodeIntegration-sqlite][read-by-index][one-transaction] index ${index}`
           );
           const start = performance.now();
           conn.all(query, params, (error, rows) => {
@@ -156,4 +159,17 @@ export const execute = async (
     oneTransactionAverage,
     oneTransactionSum,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  extraData?: ReadByIndexExtraData
+): Promise<ReadByIndexResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    readUsingBatch,
+    readBatchSize,
+    extraData
+  );
 };

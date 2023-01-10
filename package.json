@@ -43,6 +43,7 @@
     "eslint-plugin-jsx-a11y": "6.2.3",
     "eslint-plugin-react": "7.19.0",
     "eslint-plugin-react-hooks": "^1.6.1",
+    "fast-memoize": "^2.5.2",
     "file-loader": "4.3.0",
     "framer-motion": "^4.1.17",
     "fs-extra": "^8.1.0",
@@ -89,7 +90,7 @@
     "electron:start": "concurrently -k \"cross-env BROWSER=none yarn start\" \"wait-on http://localhost:3000 && electronmon .\"",
     "build:tools": "node scripts/build.tools.js",
     "exec:tools": "node scripts/exec.tools.js",
-	"tsc": "tsc"
+    "tsc": "tsc"
   },
   "eslintConfig": {
     "extends": [

@@ -3,23 +3,27 @@ import {
   PRIMARY_KEYS,
   TABLE_NAME,
 } from "../../../../constants/schema";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
-import { DataLoaderImpl } from "../../../shared/data-loader";
+// import { DataLoaderImpl } from "../../../shared/data-loader";
 import { escapeStr } from "../../../shared/escape-str";
+import { getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { addLog, removeLog } from "../../log";
 import { openSQLiteDatabase, resetSQLiteData } from "../common";
 
-export const execute = async (
-  datasetSize: number
+const originalExecute = async (
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number
 ): Promise<SingleReadWriteResult> => {
   const conn = await openSQLiteDatabase();
 
-  const dataLoader = DataLoaderImpl.getInstance();
-  const data = await dataLoader.getDataset(datasetSize);
+  //   const dataLoader = DataLoaderImpl.getInstance();
+  //   const data = await dataLoader.getDataset(datasetSize);
 
   async function resetData() {
-    const addLogRequest = addLog("[preloaded-sqlite] reset data");
+    const addLogRequest = addLog("[nodeIntegration-sqlite] reset data");
     return resetSQLiteData(conn).finally(() =>
       addLogRequest.then((logId) => removeLog(logId))
     );
@@ -35,9 +39,11 @@ export const execute = async (
   // WRITE
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][single-read-write][n-transaction] write"
+      "[nodeIntegration-sqlite][single-read-write][n-transaction] write"
     );
-    const requests = data.map((jsData: any) => {
+    const requests: Promise<void>[] = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const jsData = getData(i);
       const params: any = {};
       const fieldList: string[] = [];
       const valuesPlaceholder: string[] = [];
@@ -56,18 +62,20 @@ export const execute = async (
       const query = `INSERT OR REPLACE INTO ${escapeStr(
         TABLE_NAME
       )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
-      return new Promise<void>((resolve, reject) => {
-        conn.run(query, params, (error) =>
-          error
-            ? reject(
-                patchJSError(error, {
-                  tags: ["nodeIntegration-sqlite", "n-transaction", "write"],
-                })
-              )
-            : resolve()
-        );
-      });
-    });
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          conn.run(query, params, (error) =>
+            error
+              ? reject(
+                  patchJSError(error, {
+                    tags: ["nodeIntegration-sqlite", "n-transaction", "write"],
+                  })
+                )
+              : resolve()
+          );
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -80,9 +88,11 @@ export const execute = async (
   // READ
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][single-read-write][n-transaction] read"
+      "[nodeIntegration-sqlite][single-read-write][n-transaction] read"
     );
-    const requests = data.map((jsData: any) => {
+    const requests: Promise<void>[] = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const jsData = getData(i);
       const params: any[] = [];
       const primaryKeyConditions: string[] = [];
       PRIMARY_KEYS.forEach((key) => {
@@ -94,18 +104,20 @@ export const execute = async (
         TABLE_NAME
       )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-      return new Promise<void>((resolve, reject) => {
-        conn.get(query, params, (error) =>
-          error
-            ? reject(
-                patchJSError(error, {
-                  tags: ["nodeIntegration-sqlite", "n-transaction", "read"],
-                })
-              )
-            : resolve()
-        );
-      });
-    });
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          conn.get(query, params, (error) =>
+            error
+              ? reject(
+                  patchJSError(error, {
+                    tags: ["nodeIntegration-sqlite", "n-transaction", "read"],
+                  })
+                )
+              : resolve()
+          );
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -127,7 +139,7 @@ export const execute = async (
   // WRITE
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][single-read-write][one-transaction] write"
+      "[nodeIntegration-sqlite][single-read-write][one-transaction] write"
     );
     const start = performance.now();
     let end = -1;
@@ -146,7 +158,8 @@ export const execute = async (
               })
             );
         });
-        data.forEach((jsData: any) => {
+        for (let i = 0; i < datasetSize; i += 1) {
+          const jsData = getData(i);
           const params: any = {};
           const fieldList: string[] = [];
           const valuesPlaceholder: string[] = [];
@@ -175,7 +188,7 @@ export const execute = async (
                 })
               );
           });
-        });
+        }
 
         conn.run("COMMIT TRANSACTION", (error) => {
           if (error)
@@ -202,7 +215,7 @@ export const execute = async (
   // READ
   {
     const addLogRequest = addLog(
-      "[preloaded-sqlite][single-read-write][one-transaction] read"
+      "[nodeIntegration-sqlite][single-read-write][one-transaction] read"
     );
     const start = performance.now();
     let end = -1;
@@ -221,7 +234,9 @@ export const execute = async (
               })
             );
         });
-        data.forEach((jsData: any) => {
+
+        for (let i = 0; i < datasetSize; i += 1) {
+          const jsData = getData(i);
           const params: any[] = [];
           const primaryKeyConditions: string[] = [];
           PRIMARY_KEYS.forEach((key) => {
@@ -241,7 +256,7 @@ export const execute = async (
                 })
               );
           });
-        });
+        }
 
         conn.run("COMMIT TRANSACTION", (error) => {
           if (error)
@@ -277,4 +292,17 @@ export const execute = async (
     oneTransactionRead,
     oneTransactionWrite,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number
+): Promise<SingleReadWriteResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    readUsingBatch,
+    readBatchSize
+  );
 };

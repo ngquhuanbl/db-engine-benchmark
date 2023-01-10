@@ -1,18 +1,25 @@
 import { TABLE_NAME } from "../../../../constants/schema";
+import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
-import { DataLoaderImpl } from "../../../shared/data-loader";
+import { getData } from "../../../shared/generate-data";
+// import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexdDBDatabase, resetIndexedDBData } from "../common";
+import { openIndexedDBDatabase, resetIndexedDBData } from "../common";
 
-export const execute = async (
+const originalExecute = async (
   datasetSize: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void
 ): Promise<SingleReadWriteResult> => {
-  const dbInstance = await openIndexdDBDatabase();
+  const dbInstance = await openIndexedDBDatabase();
 
-  const dataLoader = DataLoaderImpl.getInstance();
-  const data = await dataLoader.getDataset(datasetSize);
+  //   const dataLoader = DataLoaderImpl.getInstance();
+  //   const data = await dataLoader.getDataset(datasetSize);
+
+  const durability = relaxedDurability ? "relaxed" : "default";
 
   async function resetData() {
     const logId = addLog("[idb] reset db");
@@ -30,23 +37,30 @@ export const execute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][n-transaction] write");
-    const requests = data.map((item) => {
-      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
+    const requests: Promise<void>[] = [];
+
+    for (let i = 0; i < datasetSize; i += 1) {
+      const item = getData(i);
+      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+        durability,
+      });
       const objectStore = transaction.objectStore(TABLE_NAME);
       const writeReq = objectStore.add(item);
-      return new Promise<void>((resolve, reject) => {
-        writeReq.onsuccess = function () {
-          resolve();
-        };
-        writeReq.onerror = function () {
-          reject(
-            patchDOMException(writeReq.error!, {
-              tags: ["idb", "single-read-write", "n-transaction", "write"],
-            })
-          );
-        };
-      });
-    });
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          writeReq.onsuccess = function () {
+            resolve();
+          };
+          writeReq.onerror = function () {
+            reject(
+              patchDOMException(writeReq.error!, {
+                tags: ["idb", "single-read-write", "n-transaction", "write"],
+              })
+            );
+          };
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -59,23 +73,29 @@ export const execute = async (
   // READ
   {
     const logId = addLog("[idb][single-read-write][n-transaction] read");
-    const requests = data.map((item) => {
-      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
+    const requests: Promise<void>[] = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const item = getData(i);
+      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+        durability,
+      });
       const objectStore = transaction.objectStore(TABLE_NAME);
       const readReq = objectStore.get(item.msgId);
-      return new Promise<void>((resolve, reject) => {
-        readReq.onsuccess = function () {
-          resolve();
-        };
-        readReq.onerror = function () {
-          reject(
-            patchDOMException(readReq.error!, {
-              tags: ["idb", "single-read-write", "n-transaction", "read"],
-            })
-          );
-        };
-      });
-    });
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          readReq.onsuccess = function () {
+            resolve();
+          };
+          readReq.onerror = function () {
+            reject(
+              patchDOMException(readReq.error!, {
+                tags: ["idb", "single-read-write", "n-transaction", "read"],
+              })
+            );
+          };
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -95,23 +115,29 @@ export const execute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][one-transaction] write");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
-    const objectStore = transaction.objectStore(TABLE_NAME);
-    const requests = data.map((item) => {
-      const writeReq = objectStore.add(item);
-      return new Promise<void>((resolve, reject) => {
-        writeReq.onsuccess = function () {
-          resolve();
-        };
-        writeReq.onerror = function () {
-          reject(
-            patchDOMException(writeReq.error!, {
-              tags: ["idb", "single-read-write", "n-transaction", "write"],
-            })
-          );
-        };
-      });
+    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+      durability,
     });
+    const objectStore = transaction.objectStore(TABLE_NAME);
+    const requests: Promise<void>[] = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const item = getData(i);
+      const writeReq = objectStore.add(item);
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          writeReq.onsuccess = function () {
+            resolve();
+          };
+          writeReq.onerror = function () {
+            reject(
+              patchDOMException(writeReq.error!, {
+                tags: ["idb", "single-read-write", "n-transaction", "write"],
+              })
+            );
+          };
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -123,23 +149,29 @@ export const execute = async (
   // READ
   {
     const logId = addLog("[idb][single-read-write][one-transaction] read");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite");
-    const objectStore = transaction.objectStore(TABLE_NAME);
-    const requests = data.map((item) => {
-      const readReq = objectStore.get(item.msgId);
-      return new Promise<void>((resolve, reject) => {
-        readReq.onsuccess = function () {
-          resolve();
-        };
-        readReq.onerror = function () {
-          reject(
-            patchDOMException(readReq.error!, {
-              tags: ["idb", "single-read-write", "n-transaction", "read"],
-            })
-          );
-        };
-      });
+    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+      durability,
     });
+    const objectStore = transaction.objectStore(TABLE_NAME);
+    const requests: Promise<void>[] = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const item = getData(i);
+      const readReq = objectStore.get(item.msgId);
+      requests.push(
+        new Promise<void>((resolve, reject) => {
+          readReq.onsuccess = function () {
+            resolve();
+          };
+          readReq.onerror = function () {
+            reject(
+              patchDOMException(readReq.error!, {
+                tags: ["idb", "single-read-write", "n-transaction", "read"],
+              })
+            );
+          };
+        })
+      );
+    }
     const start = performance.now();
     let end = -1;
     await Promise.all(requests).finally(() => {
@@ -156,4 +188,23 @@ export const execute = async (
     oneTransactionRead,
     oneTransactionWrite,
   };
+};
+
+export const execute = async (
+  benchmarkCount: number,
+  datasetSize: number,
+  relaxedDurability: boolean,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void
+): Promise<SingleReadWriteResult> => {
+  return averageFnResults(benchmarkCount, originalExecute)(
+    datasetSize,
+    relaxedDurability,
+    readUsingBatch,
+    readBatchSize,
+    addLog,
+    removeLog
+  );
 };

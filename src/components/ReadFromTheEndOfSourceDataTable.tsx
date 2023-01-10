@@ -72,6 +72,10 @@ type ComparisonData = {
 
 interface Props {
   datasetSize: number;
+  benchmarkCount: number;
+  doesUseRelaxedDurability: boolean;
+  doesReadUsingBatch: boolean;
+  readBatchSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
@@ -79,6 +83,10 @@ interface Props {
 
 const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
   datasetSize,
+  benchmarkCount,
+  doesUseRelaxedDurability,
+  doesReadUsingBatch,
+  readBatchSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -244,9 +252,18 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(datasetSize, addLog, removeLog, {
-      readFromEndSourceCount: readCount,
-    })
+    return executeIndexedDB(
+      benchmarkCount,
+      datasetSize,
+      doesUseRelaxedDurability,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      {
+        readFromEndSourceCount: readCount,
+      }
+    )
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -261,14 +278,32 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [datasetSize, toast, addLog, removeLog, readCount]);
+  }, [
+    datasetSize,
+    doesUseRelaxedDurability,
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+    readCount,
+  ]);
 
   const runPreloadedSQLite = useCallback(() => {
     setIsPreloadedSQLiteRunning(true);
 
-    return executePreloadedSQLite(datasetSize, addLog, removeLog, {
-      readFromEndSourceCount: readCount,
-    })
+    return executePreloadedSQLite(
+      benchmarkCount,
+      datasetSize,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      {
+        readFromEndSourceCount: readCount,
+      }
+    )
       .then((result) => {
         setPreloadedSQLiteResult(formatResult(result));
       })
@@ -283,14 +318,29 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
       .finally(() => {
         setIsPreloadedSQLiteRunning(false);
       });
-  }, [datasetSize, toast, addLog, removeLog, readCount]);
+  }, [
+    datasetSize,
+    benchmarkCount,
+    doesReadUsingBatch,
+    readBatchSize,
+    toast,
+    addLog,
+    removeLog,
+    readCount,
+  ]);
 
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite(datasetSize, {
-      readFromEndSourceCount: readCount,
-    })
+    return executeNodeIntegrationSQLite(
+      benchmarkCount,
+      datasetSize,
+      doesReadUsingBatch,
+      readBatchSize,
+      {
+        readFromEndSourceCount: readCount,
+      }
+    )
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -305,7 +355,14 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [datasetSize, toast, readCount]);
+  }, [
+    benchmarkCount,
+    datasetSize,
+    doesReadUsingBatch,
+    readBatchSize,
+    toast,
+    readCount,
+  ]);
 
   useEffect(() => {
     listenToRunAllEvent(READ_FROM_THE_END_OF_SOURCE_MAP_ORDER, () =>
@@ -367,7 +424,7 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
             >
               Run SQLite (preload)
             </Button>
-			<Button
+            <Button
               leftIcon={<ArrowRightIcon />}
               colorScheme="gray"
               size="sm"
@@ -411,10 +468,10 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
                 </Th>
               </Tr>
               <Tr>
-                <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
                 <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
+                <Th textAlign="center">Read (Total)</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -551,10 +608,7 @@ const ReadFromTheEndOfSourceDataTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
-                      bgColor = TIE_COLOR;
-                      color = "white";
-                    } else if (
+                    if (
                       comparisonResult.includes(
                         ComparisonResult.NODE_INTEGRATION_SQLITE
                       )

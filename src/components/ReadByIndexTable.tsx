@@ -71,12 +71,20 @@ type ComparisonData = {
 };
 
 interface Props {
+  benchmarkCount: number;
+  doesUseRelaxedDurability: boolean;
+  doesReadUsingBatch: boolean;
+  readBatchSize: number;
   addLog(content: string): number;
   removeLog(logId: number): void;
   chartViewModeOn: boolean;
 }
 
 const ReadByIndexTable: React.FC<Props> = ({
+  benchmarkCount,
+  doesUseRelaxedDurability,
+  doesReadUsingBatch,
+  readBatchSize,
   addLog,
   removeLog,
   chartViewModeOn,
@@ -231,7 +239,7 @@ const ReadByIndexTable: React.FC<Props> = ({
   const keys = useMemo(() => {
     const res: string[] = [];
     for (let i = 0; i < numOfKeys; i += 1) {
-      res.push(getConvId());
+      res.push(getConvId(i));
     }
     return res;
   }, [numOfKeys]);
@@ -245,7 +253,15 @@ const ReadByIndexTable: React.FC<Props> = ({
   const runIndexedDB = useCallback(() => {
     setIsIndexedDBRunning(true);
 
-    return executeIndexedDB(addLog, removeLog, { keys })
+    return executeIndexedDB(
+      benchmarkCount,
+      doesUseRelaxedDurability,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      { keys }
+    )
       .then((result) => {
         setIndexedDBResult(formatResult(result));
       })
@@ -260,12 +276,28 @@ const ReadByIndexTable: React.FC<Props> = ({
       .finally(() => {
         setIsIndexedDBRunning(false);
       });
-  }, [toast, addLog, removeLog, keys]);
+  }, [
+    doesUseRelaxedDurability,
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+    keys,
+  ]);
 
   const runPreloadedSQLite = useCallback(() => {
     setIsPreloadedSQLiteRunning(true);
 
-    return executePreloadedSQLite(addLog, removeLog, { keys })
+    return executePreloadedSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      addLog,
+      removeLog,
+      { keys }
+    )
       .then((result) => {
         setPreloadedSQLiteResult(formatResult(result));
       })
@@ -280,12 +312,25 @@ const ReadByIndexTable: React.FC<Props> = ({
       .finally(() => {
         setIsPreloadedSQLiteRunning(false);
       });
-  }, [toast, addLog, removeLog, keys]);
+  }, [
+    doesReadUsingBatch,
+    readBatchSize,
+    benchmarkCount,
+    toast,
+    addLog,
+    removeLog,
+    keys,
+  ]);
 
   const runNodeIntegrationSQLite = useCallback(() => {
     setIsNodeIntegrationSQLiteRunning(true);
 
-    return executeNodeIntegrationSQLite({ keys })
+    return executeNodeIntegrationSQLite(
+      benchmarkCount,
+      doesReadUsingBatch,
+      readBatchSize,
+      { keys }
+    )
       .then((result) => {
         setNodeIntegrationSQLiteResult(formatResult(result));
       })
@@ -300,7 +345,7 @@ const ReadByIndexTable: React.FC<Props> = ({
       .finally(() => {
         setIsNodeIntegrationSQLiteRunning(false);
       });
-  }, [keys, toast]);
+  }, [doesReadUsingBatch, readBatchSize, benchmarkCount, keys, toast]);
 
   useEffect(() => {
     listenToRunAllEvent(READ_BY_INDEX_ORDER, () =>
@@ -362,7 +407,7 @@ const ReadByIndexTable: React.FC<Props> = ({
             >
               Run SQLite (preload)
             </Button>
-			<Button
+            <Button
               leftIcon={<ArrowRightIcon />}
               colorScheme="gray"
               size="sm"
@@ -407,10 +452,10 @@ const ReadByIndexTable: React.FC<Props> = ({
                 </Th>
               </Tr>
               <Tr>
-                <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
                 <Th textAlign="center">Read (Total)</Th>
                 <Th textAlign="center">Read (Average)</Th>
+                <Th textAlign="center">Read (Total)</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -547,10 +592,7 @@ const ReadByIndexTable: React.FC<Props> = ({
                     const comparisonResult = comparisonData[metricName];
                     let bgColor: string | undefined = undefined;
                     let color: string | undefined = undefined;
-                    if (comparisonResult.includes(ComparisonResult.TIE)) {
-                      bgColor = TIE_COLOR;
-                      color = "white";
-                    } else if (
+                    if (
                       comparisonResult.includes(
                         ComparisonResult.NODE_INTEGRATION_SQLITE
                       )

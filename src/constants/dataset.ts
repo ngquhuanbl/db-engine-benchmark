@@ -1,7 +1,9 @@
 export const DEFAULT_DATASET_SIZE = 100;
 
 export const MIN_DATASET_SIZE = 1;
-
+export const DEFAULT_BENCHMARK_COUNT = 10;
+export const MIN_BENCHMARK_COUNT = 1;
+export const DEFAULT_READ_BATCH_SIZE = 10;
 export const MSG_ID_LENGTH = 18;
 
 export const DEFAULT_NUM_OF_RANGE = 10;

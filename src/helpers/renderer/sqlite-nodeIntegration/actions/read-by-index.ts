@@ -4,11 +4,17 @@ import { ReadByIndexResult } from "../../../../types/shared/result";
 import { invokeMessage } from "../../message-port";
 
 export const execute = async (
+  benchmarkCount: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
   { keys }: ReadByIndexExtraData = { keys: [] }
 ): Promise<ReadByIndexResult> => {
   return invokeMessage<ReadByIndexResult>({
     type: ActionTypes.READ_BY_INDEX,
     data: {
+      benchmarkCount,
+      readUsingBatch,
+      readBatchSize,
       extraData: { keys },
     },
   });
