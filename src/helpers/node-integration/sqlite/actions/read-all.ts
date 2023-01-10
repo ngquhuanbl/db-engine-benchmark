@@ -44,7 +44,7 @@ const originalExecute = async (
               const resultLength = rows.length;
               if (rows.length !== datasetSize) {
                 console.error(
-                  "[nodeIntegration-sqlite][read-all][n-transaction] wrong result",
+                  "[nodeIntegration-sqlite][read-all][n-transaction] insufficient full traverse",
                   {
                     resultLength,
                     datasetSize,
@@ -102,7 +102,7 @@ const originalExecute = async (
               const resultLength = rows.length;
               if (resultLength !== datasetSize) {
                 console.error(
-                  "[nodeIntegration-sqlite][read-all][one-transaction] wrong result",
+                  "[nodeIntegration-sqlite][read-all][one-transaction] insufficient full traverse",
                   {
                     resultLength,
                     datasetSize,

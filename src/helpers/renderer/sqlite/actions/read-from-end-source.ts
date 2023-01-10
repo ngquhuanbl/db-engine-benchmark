@@ -55,7 +55,7 @@ const originalExecute = async (
               const resultLength = rows.length;
               if (rows.length !== datasetSize) {
                 console.error(
-                  "[preloaded-sqlite][read-from-end-source][n-transaction] wrong result",
+                  "[preloaded-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
                   {
                     resultLength,
                     datasetSize,
@@ -120,7 +120,7 @@ const originalExecute = async (
               const resultLength = rows.length;
               if (resultLength !== datasetSize) {
                 console.error(
-                  "[preloaded-sqlite][read-from-end-source][one-transaction] wrong result",
+                  "[preloaded-sqlite][read-from-end-source][one-transaction] insufficient full traverse",
                   {
                     resultLength,
                     datasetSize,
