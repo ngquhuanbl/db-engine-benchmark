@@ -16,6 +16,10 @@ export interface ReadByIndexExtraData {
 	keys: string[];
 }
 
+export interface ReadByNonIndexExtraData {
+	count: number;
+}
+
 export interface ReadByLimitExtraData {
 	limit: number;
 	count: number;

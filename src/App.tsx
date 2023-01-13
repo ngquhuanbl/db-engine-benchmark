@@ -27,6 +27,7 @@ import ReadByLimitTable from "./components/ReadByLimitTable";
 import ReadByRangeTable from "./components/ReadByRangeTable";
 import ReadFromTheEndOfSourceDataTable from "./components/ReadFromTheEndOfSourceDataTable";
 import SingleReadWriteTable from "./components/SingleReadWriteTable";
+import ReadByNonIndexTable from "./components/ReadByNonIndexTable";
 import {
   DEFAULT_BENCHMARK_COUNT,
   DEFAULT_DATASET_SIZE,
@@ -384,6 +385,17 @@ function App() {
           </GridItem>
           <GridItem>
             <ReadByLimitTable
+              doesUseRelaxedDurability={doesUseRelaxedDurability}
+              doesReadUsingBatch={doesReadUsingBatch}
+              readBatchSize={readBatchSize}
+              benchmarkCount={benchmarkCount}
+              addLog={addLog}
+              removeLog={removeLog}
+              chartViewModeOn={chartViewModeOn}
+            />
+          </GridItem>
+          <GridItem>
+            <ReadByNonIndexTable
               doesUseRelaxedDurability={doesUseRelaxedDurability}
               doesReadUsingBatch={doesReadUsingBatch}
               readBatchSize={readBatchSize}

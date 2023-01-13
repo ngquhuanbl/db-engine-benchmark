@@ -87,7 +87,7 @@
     "start": "node scripts/start.js",
     "build": "node scripts/build.js",
     "test": "node scripts/test.js",
-    "electron:start": "concurrently -k \"cross-env BROWSER=none yarn start\" \"wait-on http://localhost:3000 && electronmon .\"",
+    "electron:start": "concurrently -k \"cross-env BROWSER=none yarn start\" \"wait-on http://localhost:3000 && wait-on http://localhost:3001 && electronmon .\"",
     "build:tools": "node scripts/build.tools.js",
     "exec:tools": "node scripts/exec.tools.js",
     "tsc": "tsc"

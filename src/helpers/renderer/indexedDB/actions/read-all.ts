@@ -86,10 +86,13 @@ const originalExecute = async (
               const result = readReq.result;
               const resultLength = result.length;
               if (resultLength !== datasetSize) {
-                console.error("[idb][read-all][n-transaction] insufficient full traverse", {
-                  resultLength,
-                  datasetSize,
-                });
+                console.error(
+                  "[idb][read-all][n-transaction] insufficient full traverse",
+                  {
+                    resultLength,
+                    datasetSize,
+                  }
+                );
               }
               resolve(end - start);
             };
@@ -104,10 +107,13 @@ const originalExecute = async (
         })
       );
     }
+    const start = performance.now();
     const results = await Promise.all(requests);
+    const end = performance.now();
+    nTransactionSum = end - start;
     removeLog(logId);
-    nTransactionSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = nTransactionSum / readAllCount;
+    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    nTransactionAverage = accumulateSum / readAllCount;
   }
   //#endregion
 
@@ -128,10 +134,13 @@ const originalExecute = async (
             const result = readReq.result;
             const resultLength = result.length;
             if (resultLength !== datasetSize) {
-              console.error("[idb][read-all][one-transaction] insufficient full traverse", {
-                resultLength,
-                datasetSize,
-              });
+              console.error(
+                "[idb][read-all][one-transaction] insufficient full traverse",
+                {
+                  resultLength,
+                  datasetSize,
+                }
+              );
             }
             const end = performance.now();
             resolve(end - start);
@@ -146,10 +155,15 @@ const originalExecute = async (
         })
       );
     }
+    const start = performance.now();
     const results = await Promise.all(requests);
+    const end = performance.now();
+    oneTransactionSum = end - start;
+	
+    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    oneTransactionAverage = accumulateSum / readAllCount;
+	
     removeLog(logId);
-    oneTransactionSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = oneTransactionSum / readAllCount;
   }
   //#endregion
 

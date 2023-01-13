@@ -1,8 +1,9 @@
-import { PRIMARY_KEYS, TABLE_NAME } from "../../../../constants/schema";
-import { ReadByRangeExtraData } from "../../../../types/shared/action";
+import { TABLE_NAME } from "../../../../constants/schema";
+import { ReadByNonIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
-import { ReadByRangeResult } from "../../../../types/shared/result";
+import { ReadByNonIndexResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
+import { getNonIndexConditionSQLite } from "../../../shared/non-index-conditions";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
@@ -11,10 +12,8 @@ const originalExecute = async (
   readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
-  { ranges }: ReadByRangeExtraData = { ranges: [] }
-): Promise<ReadByRangeResult> => {
-  const numOfRanges = ranges.length;
-
+  { count }: ReadByNonIndexExtraData = { count: 1 }
+): Promise<ReadByNonIndexResult> => {
   const conn = await openSQLiteDatabase();
 
   let nTransactionAverage = -1;
@@ -22,57 +21,61 @@ const originalExecute = async (
   let oneTransactionAverage = -1;
   let oneTransactionSum = -1;
 
+  const checkStatement = getNonIndexConditionSQLite();
+
+  // Checksum
+  let resultsLength = -1;
+
   //#region n transaction
   {
-    const requests = ranges.map(({ from, to }, index) => {
-      const params: any[] = [from, to];
-      const primaryKeyConditions: string[] = [];
-      PRIMARY_KEYS.forEach((key) => {
-        primaryKeyConditions.push(
-          `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-        );
-      });
+    const requests: Promise<number>[] = [];
+    for (let i = 0; i < count; i += 1) {
       const query = `SELECT * FROM ${escapeStr(
         TABLE_NAME
-      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-      return new Promise<number>((resolve, reject) => {
-        const logId = addLog(
-          `[preloaded-sqlite][read-by-range][n-transaction] range ${index}`
-        );
-        const start = performance.now();
-        conn.all(query, params, (error, rows) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "preload-sqlite",
-                  "read-by-range",
-                  "n-transaction",
-                  `range ${index}`,
-                ],
-              })
-            );
-          else {
-            const end = performance.now();
-            const resultLength = rows.length;
-            const size = +to - +from + 1;
-            if (size !== resultLength) {
-              console.error(
-                `[preloaded-sqlite][read-by-range][n-transaction] range ${index} - unmatched checksum`,
-                {
-                  from,
-                  to,
-                  resultLength,
-                  size,
-                }
+      )} WHERE ${checkStatement}`;
+      requests.push(
+        new Promise<number>((resolve, reject) => {
+          const logId = addLog(
+            `[preloaded-sqlite][read-by-non-index][n-transaction] index ${i}`
+          );
+          const params = [];
+          const start = performance.now();
+          conn.all(query, params, (error, rows) => {
+            if (error)
+              reject(
+                patchJSError(error, {
+                  tags: [
+                    "preload-sqlite",
+                    "read-by-non-index",
+                    "n-transaction",
+                    `index ${i}`,
+                  ],
+                })
               );
+            else {
+              const end = performance.now();
+              resolve(end - start);
+              if (resultsLength === -1) resultsLength = results.length;
+              else if (resultsLength !== results.length) {
+                console.error(
+                  "[preload-sqlite][read-by-non-index][n-transaction] inconsistent result length",
+                  {
+                    expected: resultsLength,
+                    actual: results.length,
+                  }
+                );
+              }
+              if (results.length === 0) {
+                console.error(
+                  "[preload-sqlite][read-by-non-index][n-transaction] empty result"
+                );
+              }
             }
-            resolve(end - start);
-          }
-          removeLog(logId);
-        });
-      });
-    });
+            removeLog(logId);
+          });
+        })
+      );
+    }
     const start = performance.now();
     const results = await Promise.all(requests);
     const end = performance.now();
@@ -82,7 +85,7 @@ const originalExecute = async (
       (result, current) => result + current,
       0
     );
-    nTransactionAverage = accumulateSum / numOfRanges;
+    nTransactionAverage = accumulateSum / count;
   }
   //#endregion
 
@@ -98,7 +101,7 @@ const originalExecute = async (
               patchJSError(error, {
                 tags: [
                   "preload-sqlite",
-                  "read-by-range",
+                  "read-by-non-index",
                   "1-transaction",
                   "begin-transaction",
                 ],
@@ -106,20 +109,13 @@ const originalExecute = async (
             );
         });
 
-        for (let index = 0; index < numOfRanges; index += 1) {
-          const { from, to } = ranges[index];
-          const params: any[] = [from, to];
-          const primaryKeyConditions: string[] = [];
-          PRIMARY_KEYS.forEach((key) => {
-            primaryKeyConditions.push(
-              `${escapeStr(key)} >=? AND ${escapeStr(key)} <= ?`
-            );
-          });
+        for (let index = 0; index < count; index += 1) {
+          const params: any[] = [];
           const query = `SELECT * FROM ${escapeStr(
             TABLE_NAME
-          )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+          )} WHERE ${checkStatement}`;
           const logId = addLog(
-            `[preloaded-sqlite][read-by-range][one-transaction] range ${index}`
+            `[preloaded-sqlite][read-by-non-index][one-transaction] index ${index}`
           );
           const start = performance.now();
           conn.all(query, params, (error, rows) => {
@@ -128,28 +124,30 @@ const originalExecute = async (
                 patchJSError(error, {
                   tags: [
                     "preload-sqlite",
-                    "read-by-range",
+                    "read-by-non-index",
                     "1-transaction",
-                    `range ${index}`,
+                    `index ${index}`,
                   ],
                 })
               );
             } else {
               const end = performance.now();
-              const resultLength = rows.length;
-              const size = +to - +from + 1;
-              if (size !== resultLength) {
+              results.push(end - start);
+              if (resultsLength === -1) resultsLength = results.length;
+              else if (resultsLength !== results.length) {
                 console.error(
-                  `[preloaded-sqlite][read-by-range][1-transaction] range ${index} - unmatched checksum`,
+                  "[preload-sqlite][read-by-non-index][one-transaction] inconsistent result length",
                   {
-                    from,
-                    to,
-                    resultLength,
-                    size,
+                    expected: resultsLength,
+                    actual: results.length,
                   }
                 );
               }
-              results.push(end - start);
+              if (results.length === 0) {
+                console.error(
+                  "[preload-sqlite][read-by-non-index][one-transaction] empty result"
+                );
+              }
             }
             removeLog(logId);
           });
@@ -161,7 +159,7 @@ const originalExecute = async (
               patchJSError(error, {
                 tags: [
                   "preload-sqlite",
-                  "read-by-range",
+                  "read-by-non-index",
                   "1-transaction",
                   "commit-transaction",
                 ],
@@ -178,7 +176,7 @@ const originalExecute = async (
       (result, current) => result + current,
       0
     );
-    oneTransactionAverage = accumulateSum / numOfRanges;
+    oneTransactionAverage = accumulateSum / count;
   }
   //#endregion
 
@@ -200,8 +198,8 @@ export const execute = async (
   readBatchSize: number,
   addLog: (content: string) => number,
   removeLog: (id: number) => void,
-  extraData?: ReadByRangeExtraData
-): Promise<ReadByRangeResult> => {
+  extraData?: ReadByNonIndexExtraData
+): Promise<ReadByNonIndexResult> => {
   return averageFnResults(benchmarkCount, originalExecute)(
     readUsingBatch,
     readBatchSize,

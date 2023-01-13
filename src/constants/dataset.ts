@@ -24,3 +24,7 @@ export const MIN_READ_BY_LIMIT_COUNT = 1;
 
 export const DEFAULT_LIMIT = 10;
 export const MIN_LIMIT = 1;
+
+export const DEFAULT_READ_BY_NON_INDEX_COUNT = 10;
+export const MIN_READ_BY_NON_INDEX_COUNT = 10;
+

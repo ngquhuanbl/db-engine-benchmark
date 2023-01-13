@@ -7,11 +7,13 @@ import {
   readByLimit,
   readByRange,
   readFromEndSourceCount,
+  readByNonIndex,
 } from "../helpers/node-integration/sqlite/actions";
 import {
   ReadAllMessageResult,
   ReadByIndexMessageResult,
   ReadByLimitMessageResult,
+  ReadByNonIndexMessageResult,
   ReadByRangeMessageResult,
   ReadFromEndSourceMessageResult,
   SingleReadWriteMessageResult,
@@ -86,6 +88,27 @@ messageBroker.addMessageListener(function (_, request) {
         readByIndex(benchmarkCount, readUsingBatch, readBatchSize, extraData)
           .then((result) => {
             const message: ReadByIndexMessageResult = {
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              result,
+            };
+            messageBroker.sendMessage(message);
+          })
+          .catch((error) =>
+            messageBroker.sendMessage({
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              error,
+            })
+          );
+        break;
+      }
+      case ActionTypes.READ_BY_NON_INDEX: {
+        const { benchmarkCount, readUsingBatch, readBatchSize, extraData } =
+          dataObj;
+        readByNonIndex(benchmarkCount, readUsingBatch, readBatchSize, extraData)
+          .then((result) => {
+            const message: ReadByNonIndexMessageResult = {
               id: msgId,
               type: MessageTypes.RESPONSE,
               result,

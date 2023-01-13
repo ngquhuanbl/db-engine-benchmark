@@ -71,9 +71,16 @@ const originalExecute = async (
           };
         })
     );
+    const start = performance.now();
     const results = await Promise.all(requests);
-    nTransactionSum = results.reduce((result, current) => result + current, 0);
-    nTransactionAverage = nTransactionSum / numOfRanges;
+    const end = performance.now();
+    nTransactionSum = end - start;
+
+    const accumulateSum = results.reduce(
+      (result, current) => result + current,
+      0
+    );
+    nTransactionAverage = accumulateSum / numOfRanges;
   }
   //#endregion
 
@@ -125,12 +132,16 @@ const originalExecute = async (
           };
         })
     );
+    const start = performance.now();
     const results = await Promise.all(requests);
-    oneTransactionSum = results.reduce(
+    const end = performance.now();
+    oneTransactionSum = end - start;
+
+    const accumulateSum = results.reduce(
       (result, current) => result + current,
       0
     );
-    oneTransactionAverage = oneTransactionSum / numOfRanges;
+    oneTransactionAverage = accumulateSum / numOfRanges;
   }
   //#endregion
 

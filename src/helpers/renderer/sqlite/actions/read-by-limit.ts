@@ -53,15 +53,21 @@ const originalExecute = async (
         })
       );
     }
+    const start = performance.now();
     const results = await Promise.all(requests);
+    const end = performance.now();
+    nTransactionSum = end - start;
+
+    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    nTransactionAverage = accumulateSum / count;
+
     removeLog(logId);
-    nTransactionSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = nTransactionSum / count;
   }
   //#endregion
 
   //#region one transaction
   {
+	const start = performance.now()
     const results = await new Promise<number[]>((resolve, reject) => {
       const results: number[] = [];
       const logId = addLog(
@@ -116,8 +122,11 @@ const originalExecute = async (
         });
       });
     });
-    oneTransactionSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = oneTransactionSum / count;
+    const end = performance.now();
+    oneTransactionSum = end - start;
+	
+    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    oneTransactionAverage = accumulateSum / count;
   }
   //#endregion
 

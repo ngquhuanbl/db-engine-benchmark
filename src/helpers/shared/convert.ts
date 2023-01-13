@@ -4,7 +4,7 @@ export function convertMsToS(ms: number) {
   let second = ms / 1000;
   let index = 0;
   while (second < 1) {
-    second = second * 10;
+    second *= 10;
     index += 1;
   }
 

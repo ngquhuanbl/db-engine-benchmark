@@ -4,6 +4,7 @@ import {
   ReadAllExtraData,
   ReadByIndexExtraData,
   ReadByLimitExtraData,
+  ReadByNonIndexExtraData,
   ReadByRangeExtraData,
   ReadFromEndSourceExtraData,
 } from "./action";
@@ -11,6 +12,7 @@ import {
   ReadAllResult,
   ReadByIndexResult,
   ReadByLimitResult,
+  ReadByNonIndexResult,
   ReadByRangeResult,
   ReadFromEndSourceResult,
   SingleReadWriteResult,
@@ -106,6 +108,16 @@ export type ReadFromEndSourceMessageRequest = BasePortMessageRequest<
   }
 >;
 
+export type ReadByNonIndexMessageRequest = BasePortMessageRequest<
+  ActionTypes.READ_BY_NON_INDEX,
+  {
+    benchmarkCount: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+    extraData: ReadByNonIndexExtraData;
+  }
+>;
+
 export type MessageRequest =
   | AddLogMessageRequest
   | RemoveLogMessageRequest
@@ -114,7 +126,8 @@ export type MessageRequest =
   | ReadByIndexMessageRequest
   | ReadByLimitMessageRequest
   | ReadByRangeMessageRequest
-  | ReadFromEndSourceMessageRequest;
+  | ReadFromEndSourceMessageRequest
+  | ReadByNonIndexMessageRequest;
 
 interface BasePortMessageResult<Result> extends BaseMessage {
   type: typeof MessageTypes.RESPONSE;
@@ -139,6 +152,9 @@ export type ReadByRangeMessageResult = BasePortMessageResult<ReadByRangeResult>;
 export type ReadFromEndSourceMessageResult =
   BasePortMessageResult<ReadFromEndSourceResult>;
 
+export type ReadByNonIndexMessageResult =
+  BasePortMessageResult<ReadByNonIndexResult>;
+
 export type MessageResult =
   | AddLogMessageResult
   | SingleReadWriteMessageResult
@@ -146,6 +162,7 @@ export type MessageResult =
   | ReadByIndexMessageResult
   | ReadByLimitMessageResult
   | ReadByRangeMessageResult
-  | ReadFromEndSourceMessageResult;
+  | ReadFromEndSourceMessageResult
+  | ReadByNonIndexMessageResult;
 
 export type Message = MessageRequest | MessageResult;

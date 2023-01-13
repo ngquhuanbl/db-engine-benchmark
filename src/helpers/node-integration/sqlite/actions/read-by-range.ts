@@ -72,15 +72,23 @@ const originalExecute = async (
         });
       });
     });
+    const start = performance.now();
     const results = await Promise.all(requests);
-    nTransactionSum = results.reduce((result, current) => result + current, 0);
-    nTransactionAverage = nTransactionSum / numOfRanges;
+    const end = performance.now();
+    nTransactionSum = end - start;
+
+    const accumulateSum = results.reduce(
+      (result, current) => result + current,
+      0
+    );
+    nTransactionAverage = accumulateSum / numOfRanges;
   }
   //#endregion
 
   //#region one transaction
   {
     const results: number[] = [];
+    const start = performance.now();
     await new Promise<void>((resolve, reject) => {
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -162,11 +170,14 @@ const originalExecute = async (
         });
       });
     });
-    oneTransactionSum = results.reduce(
+    const end = performance.now();
+    oneTransactionSum = end - start;
+
+    const accumulateSum = results.reduce(
       (result, current) => result + current,
       0
     );
-    oneTransactionAverage = oneTransactionSum / numOfRanges;
+    oneTransactionAverage = accumulateSum / numOfRanges;
   }
   //#endregion
 

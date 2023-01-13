@@ -1,21 +1,18 @@
-import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../constants/dataset";
-import { PRIMARY_KEYS, TABLE_NAME } from "../../../../constants/schema";
-import { ReadFromEndSourceResult } from "../../../../types/shared/result";
+import { TABLE_NAME } from "../../../../constants/schema";
+import { ReadByNonIndexResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
-import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
+import { ReadByNonIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
+import { getNonIndexConditionSQLite } from "../../../shared/non-index-conditions";
 
 const originalExecute = async (
-  datasetSize: number,
   readUsingBatch: boolean,
   readBatchSize: number,
-  { readFromEndSourceCount }: ReadFromEndSourceExtraData = {
-    readFromEndSourceCount: DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
-  }
-): Promise<ReadFromEndSourceResult> => {
+  { count }: ReadByNonIndexExtraData = { count: 1 }
+): Promise<ReadByNonIndexResult> => {
   const conn = await openSQLiteDatabase();
 
   let nTransactionAverage = -1;
@@ -23,46 +20,57 @@ const originalExecute = async (
   let oneTransactionAverage = -1;
   let oneTransactionSum = -1;
 
+  const checkStatement = getNonIndexConditionSQLite();
+
+  // Checksum
+  let resultsLength = -1;
+
   //#region n transaction
   {
-    const addLogRequest = addLog(
-      "[nodeIntegration-sqlite][read-from-end-source][n-transaction] read"
-    );
-    const query = `SELECT * FROM ${escapeStr(
-      TABLE_NAME
-    )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
-      " , "
-    )}`;
     const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
+    for (let i = 0; i < count; i += 1) {
+      const query = `SELECT * FROM ${escapeStr(
+        TABLE_NAME
+      )} WHERE ${checkStatement}`;
       requests.push(
         new Promise<number>((resolve, reject) => {
+          const addLogRequest = addLog(
+            `[nodeIntegration-sqlite][read-by-non-index][n-transaction] index ${i}`
+          );
+          const params = [];
           const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
+          conn.all(query, params, (error, rows) => {
             if (error)
               reject(
                 patchJSError(error, {
                   tags: [
                     "nodeIntegration-sqlite",
-                    "read-from-end-source",
+                    "read-by-non-index",
                     "n-transaction",
+                    `index ${i}`,
                   ],
                 })
               );
             else {
               const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
+              resolve(end - start);
+              if (resultsLength === -1) resultsLength = results.length;
+              else if (resultsLength !== results.length) {
                 console.error(
-                  "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
+                  "[nodeIntegration-sqlite][read-by-non-index][n-transaction] inconsistent result length",
                   {
-                    resultLength,
-                    datasetSize,
+                    expected: resultsLength,
+                    actual: results.length,
                   }
                 );
               }
-              resolve(end - start);
+              if (results.length === 0) {
+                console.error(
+                  `[nodeIntegration-sqlite][read-by-non-index][n-transaction] empty results`
+                );
+              }
             }
+            addLogRequest.then((logId) => removeLog(logId));
           });
         })
       );
@@ -72,21 +80,16 @@ const originalExecute = async (
 	const end = performance.now();
 	nTransactionSum = end - start;
 	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readFromEndSourceCount;
-	
-    addLogRequest.then((logId) => removeLog(logId));
+    const accumulateSum = results.reduce((result, current) => result + current, 0);
+    nTransactionAverage = accumulateSum / count;
   }
   //#endregion
 
   //#region one transaction
   {
-    const start = performance.now();
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
-      const addLogRequest = addLog(
-        "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
-      );
+    const results: number[] = [];
+	const start = performance.now();
+    await new Promise<void>((resolve, reject) => {
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
@@ -94,7 +97,7 @@ const originalExecute = async (
               patchJSError(error, {
                 tags: [
                   "nodeIntegration-sqlite",
-                  "read-from-end-source",
+                  "read-by-non-index",
                   "1-transaction",
                   "begin-transaction",
                 ],
@@ -102,38 +105,47 @@ const originalExecute = async (
             );
         });
 
-        for (let i = 0; i < readFromEndSourceCount; i += 1) {
+        for (let index = 0; index < count; index += 1) {
+          const params: any[] = [];
           const query = `SELECT * FROM ${escapeStr(
             TABLE_NAME
-          )} ORDER BY ${PRIMARY_KEYS.map(
-            (key) => `${escapeStr(key)} DESC`
-          ).join(" , ")}`;
+          )} WHERE ${checkStatement}`;
+          const addLogRequest = addLog(
+            `[nodeIntegration-sqlite][read-by-non-index][one-transaction] index ${index}`
+          );
           const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
+          conn.all(query, params, (error, rows) => {
             if (error) {
               reject(
                 patchJSError(error, {
                   tags: [
                     "nodeIntegration-sqlite",
-                    "read-from-end-source",
+                    "read-by-non-index",
                     "1-transaction",
+                    `index ${index}`,
                   ],
                 })
               );
             } else {
               const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
+              results.push(end - start);
+              if (resultsLength === -1) resultsLength = results.length;
+              else if (resultsLength !== results.length) {
                 console.error(
-                  "[nodeIntegration-sqlite][read-from-end-source][one-transaction] insufficient full traverse",
+                  "[nodeIntegration-sqlite][read-by-non-index][one-transaction] inconsistent result length",
                   {
-                    resultLength,
-                    datasetSize,
+                    expected: resultsLength,
+                    actual: results.length,
                   }
                 );
               }
-              results.push(end - start);
+              if (results.length === 0) {
+                console.error(
+                  `[nodeIntegration-sqlite][read-by-non-index][one-transaction] empty results`
+                );
+              }
             }
+            addLogRequest.then((logId) => removeLog(logId));
           });
         }
 
@@ -143,22 +155,24 @@ const originalExecute = async (
               patchJSError(error, {
                 tags: [
                   "nodeIntegration-sqlite",
-                  "read-from-end-source",
+                  "read-by-non-index",
                   "1-transaction",
                   "commit-transaction",
                 ],
               })
             );
-          else resolve(results);
-          addLogRequest.then((logId) => removeLog(logId));
+          else resolve();
         });
       });
     });
 	const end = performance.now();
 	oneTransactionSum = end - start;
 	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readFromEndSourceCount;
+    const accumulateSum = results.reduce(
+      (result, current) => result + current,
+      0
+    );
+    oneTransactionAverage = accumulateSum / count;
   }
   //#endregion
 
@@ -176,13 +190,11 @@ const originalExecute = async (
 
 export const execute = async (
   benchmarkCount: number,
-  datasetSize: number,
   readUsingBatch: boolean,
   readBatchSize: number,
-  extraData?: ReadFromEndSourceExtraData
-): Promise<ReadFromEndSourceResult> => {
+  extraData?: ReadByNonIndexExtraData
+): Promise<ReadByNonIndexResult> => {
   return averageFnResults(benchmarkCount, originalExecute)(
-    datasetSize,
     readUsingBatch,
     readBatchSize,
     extraData
