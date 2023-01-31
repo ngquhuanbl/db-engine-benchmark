@@ -37,7 +37,7 @@ import {
   DEFAULT_READ_BY_NON_INDEX_COUNT,
   MIN_READ_BY_NON_INDEX_COUNT,
 } from "../constants/dataset";
-import { READ_BY_INDEX_ORDER } from "../constants/run-all";
+import { READ_BY_NON_INDEX_ORDER } from "../constants/run-all";
 import { convertMsToS } from "../helpers/shared/convert";
 import {
   listenToGetAllEvent,
@@ -339,7 +339,7 @@ const ReadByNonIndexTable: React.FC<Props> = ({
   }, [doesReadUsingBatch, readBatchSize, benchmarkCount, readCount, toast]);
 
   useEffect(() => {
-    listenToRunAllEvent(READ_BY_INDEX_ORDER, () =>
+    listenToRunAllEvent(READ_BY_NON_INDEX_ORDER, () =>
       runIndexedDB()
         .then(() => runPreloadedSQLite())
         .then(() => runNodeIntegrationSQLite())
