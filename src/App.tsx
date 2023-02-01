@@ -49,6 +49,10 @@ import { LogObj } from "./types/shared/logs";
 import { ActionTypes } from "./constants/action-types";
 import { MessageTypes } from "./constants/message";
 import { AddLogMessageResult } from "./types/shared/message-port";
+import { getConvId } from "./helpers/shared/generate-data";
+
+window.PARTITION_MODE = true;
+window.SELECTED_PARTITION_KEY = getConvId(0);
 
 let logIdCounter = 0;
 

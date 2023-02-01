@@ -1,10 +1,18 @@
-import { TABLE_NAME } from "../../../../constants/schema";
+import memoize from "fast-memoize";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
-import { getData } from "../../../shared/generate-data";
+import {
+  getAllPossibleConvIds,
+  getConvId,
+  getData,
+} from "../../../shared/generate-data";
 // import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexedDBDatabase, resetIndexedDBData } from "../common";
+import {
+  getTableFullname,
+  openIndexedDBDatabase,
+  resetIndexedDBData,
+} from "../common";
 
 const originalExecute = async (
   datasetSize: number,
@@ -41,10 +49,12 @@ const originalExecute = async (
 
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
-      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+      const partitionKey = getConvId(i);
+      const fullname = getTableFullname(partitionKey);
+      const transaction = dbInstance.transaction(fullname, "readwrite", {
         durability,
       });
-      const objectStore = transaction.objectStore(TABLE_NAME);
+      const objectStore = transaction.objectStore(fullname);
       const writeReq = objectStore.add(item);
       requests.push(
         new Promise<void>((resolve, reject) => {
@@ -76,10 +86,12 @@ const originalExecute = async (
     const requests: Promise<void>[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
-      const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+      const partitionKey = item.toUid;
+      const fullname = getTableFullname(partitionKey);
+      const transaction = dbInstance.transaction(fullname, "readwrite", {
         durability,
       });
-      const objectStore = transaction.objectStore(TABLE_NAME);
+      const objectStore = transaction.objectStore(fullname);
       const readReq = objectStore.get(item.msgId);
       requests.push(
         new Promise<void>((resolve, reject) => {
@@ -115,13 +127,20 @@ const originalExecute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][one-transaction] write");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+    const allPartitionKeys = getAllPossibleConvIds();
+    const allFullnames = allPartitionKeys.map(getTableFullname);
+    const transaction = dbInstance.transaction(allFullnames, "readwrite", {
       durability,
     });
-    const objectStore = transaction.objectStore(TABLE_NAME);
+    const getObjectStore = memoize((partitionKey: string) => {
+      const storeName = getTableFullname(partitionKey);
+      return transaction.objectStore(storeName);
+    });
     const requests: Promise<void>[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
+      const partitionKey = item.toUid;
+      const objectStore = getObjectStore(partitionKey);
       const writeReq = objectStore.add(item);
       requests.push(
         new Promise<void>((resolve, reject) => {
@@ -149,13 +168,20 @@ const originalExecute = async (
   // READ
   {
     const logId = addLog("[idb][single-read-write][one-transaction] read");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
+    const allPartitionKeys = getAllPossibleConvIds();
+    const allFullnames = allPartitionKeys.map(getTableFullname);
+    const transaction = dbInstance.transaction(allFullnames, "readwrite", {
       durability,
     });
-    const objectStore = transaction.objectStore(TABLE_NAME);
+    const getObjectStore = memoize((partitionKey: string) => {
+      const storeName = getTableFullname(partitionKey);
+      return transaction.objectStore(storeName);
+    });
     const requests: Promise<void>[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
+      const partitionKey = item.toUid;
+      const objectStore = getObjectStore(partitionKey);
       const readReq = objectStore.get(item.msgId);
       requests.push(
         new Promise<void>((resolve, reject) => {

@@ -1,11 +1,12 @@
+import memoize from "fast-memoize";
 import { DEFAULT_READ_ALL_COUNT } from "../../../../constants/dataset";
-import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadAllExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadAllResult } from "../../../../types/shared/result";
+import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { lastOfArray } from "../../../shared/last-of-array";
 import { patchDOMException } from "../../../shared/patch-error";
-import { openIndexedDBDatabase } from "../common";
+import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
   datasetSize: number,
@@ -20,6 +21,8 @@ const originalExecute = async (
 
   const durability = relaxedDurability ? "relaxed" : "default";
 
+  const allPartitionKeys = getAllPossibleConvIds();
+
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
   let oneTransactionAverage = -1;
@@ -30,61 +33,140 @@ const originalExecute = async (
     const logId = addLog("[idb][read-all][n-transaction] read all");
     const requests: Promise<number>[] = [];
     for (let i = 0; i < readAllCount; i += 1) {
-      const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
-        durability,
-      });
-      const objectStore = transaction.objectStore(TABLE_NAME);
-      requests.push(
-        new Promise<number>(async (resolve, reject) => {
-          const start = performance.now();
-          if (readUsingBatch) {
-            let lastDoc = undefined;
-            let done = false;
-            let result = [];
-            while (done === false) {
-              await new Promise<void>((subResolve) => {
-                const range = IDBKeyRange.lowerBound(
-                  lastDoc ? lastDoc.msgId : "",
-                  true
-                );
-                const openCursorReq = objectStore.getAll(range, readBatchSize);
-                openCursorReq.onerror = function () {
-                  reject(
-                    patchDOMException(openCursorReq.error!, {
-                      tags: ["idb", "read-all", "n-transaction", "batch"],
-                    })
+      const start = performance.now();
+      if (window.PARTITION_MODE) {
+        const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
+        const transaction = dbInstance.transaction(fullname, "readonly", {
+          durability,
+        });
+        const objectStore = transaction.objectStore(fullname);
+        requests.push(
+          new Promise<number>(async (resolve, reject) => {
+            const start = performance.now();
+            if (readUsingBatch) {
+              let lastDoc = undefined;
+              let done = false;
+              let result = [];
+              while (done === false) {
+                await new Promise<void>((subResolve) => {
+                  const range = IDBKeyRange.lowerBound(
+                    lastDoc ? lastDoc.msgId : "",
+                    true
                   );
-                };
-                openCursorReq.onsuccess = function () {
-                  const subResult = openCursorReq.result;
-                  lastDoc = lastOfArray(subResult);
-                  if (subResult.length === 0) {
-                    done = true;
-                    const end = performance.now();
+                  const openCursorReq = objectStore.getAll(
+                    range,
+                    readBatchSize
+                  );
+                  openCursorReq.onerror = function () {
+                    reject(
+                      patchDOMException(openCursorReq.error!, {
+                        tags: ["idb", "read-all", "n-transaction", "batch"],
+                      })
+                    );
+                  };
+                  openCursorReq.onsuccess = function () {
+                    const subResult = openCursorReq.result;
+                    lastDoc = lastOfArray(subResult);
+                    if (subResult.length === 0) {
+                      done = true;
+                      const end = performance.now();
+                      resolve(end - start);
+                    } else result.concat(subResult);
+                    subResolve();
+                  };
+                });
+              }
+            } else {
+              const readReq = objectStore.getAll();
+              readReq.onsuccess = function () {
+                const end = performance.now();
 
-                    const resultLength = result.length;
-                    if (resultLength !== datasetSize) {
-                      console.error(
-                        "[idb][read-all][n-transaction][batch] insufficient full traverse",
-                        {
-                          resultLength,
-                          datasetSize,
-                        }
-                      );
-                    }
-                    resolve(end - start);
-                  } else result.concat(subResult);
-                  subResolve();
-                };
-              });
+                // const result = readReq.result;
+                // const resultLength = result.length;
+                // if (resultLength !== datasetSize) {
+                //   console.error(
+                //     "[idb][read-all][n-transaction] insufficient full traverse",
+                //     {
+                //       resultLength,
+                //       datasetSize,
+                //     }
+                //   );
+                // }
+                resolve(end - start);
+              };
+              readReq.onerror = function () {
+                reject(
+                  patchDOMException(readReq.error!, {
+                    tags: ["idb", "read-all", "n-transaction"],
+                  })
+                );
+              };
             }
-          } else {
-            const readReq = objectStore.getAll();
-            readReq.onsuccess = function () {
+          })
+        );
+      } else {
+        const subRequests: Promise<number>[] = [];
+        for (const partitionKey of allPartitionKeys) {
+          const fullname = getTableFullname(partitionKey);
+          const transaction = dbInstance.transaction(fullname, "readonly", {
+            durability,
+          });
+          const objectStore = transaction.objectStore(fullname);
+          subRequests.push(
+            new Promise<number>(async (resolve, reject) => {
+              if (readUsingBatch) {
+                let lastDoc = undefined;
+                let done = false;
+                let result = [];
+                while (done === false) {
+                  await new Promise<void>((subResolve) => {
+                    const range = IDBKeyRange.lowerBound(
+                      lastDoc ? lastDoc.msgId : "",
+                      true
+                    );
+                    const openCursorReq = objectStore.getAll(
+                      range,
+                      readBatchSize
+                    );
+                    openCursorReq.onerror = function () {
+                      reject(openCursorReq.error!);
+                    };
+                    openCursorReq.onsuccess = function () {
+                      const subResult = openCursorReq.result;
+                      lastDoc = lastOfArray(subResult);
+                      if (subResult.length === 0) {
+                        done = true;
+                        const end = performance.now();
+
+                        const resultLength = result.length;
+                        resolve(resultLength);
+                      } else result.concat(subResult);
+                      subResolve();
+                    };
+                  });
+                }
+              } else {
+                const readReq = objectStore.getAll();
+                readReq.onsuccess = function () {
+                  resolve(readReq.result.length);
+                };
+                readReq.onerror = function () {
+                  reject(readReq.error);
+                };
+              }
+            })
+          );
+        }
+        requests.push(
+          Promise.all(subRequests)
+            .then((totalList) => {
               const end = performance.now();
 
-              const result = readReq.result;
-              const resultLength = result.length;
+              const resultLength = totalList.reduce(
+                (result, current) => result + current,
+                0
+              );
+
               if (resultLength !== datasetSize) {
                 console.error(
                   "[idb][read-all][n-transaction] insufficient full traverse",
@@ -94,18 +176,15 @@ const originalExecute = async (
                   }
                 );
               }
-              resolve(end - start);
-            };
-            readReq.onerror = function () {
-              reject(
-                patchDOMException(readReq.error!, {
-                  tags: ["idb", "read-all", "n-transaction"],
-                })
-              );
-            };
-          }
-        })
-      );
+              return end - start;
+            })
+            .catch((e) => {
+              throw patchDOMException(e, {
+                tags: ["idb", "read-all", "n-transaction"],
+              });
+            })
+        );
+      }
     }
     const start = performance.now();
     const results = await Promise.all(requests);
@@ -120,49 +199,102 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog("[idb][read-all][one-transaction] read all");
-    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+    const allTableFullnames = allPartitionKeys.map((partitionKey) =>
+      getTableFullname(partitionKey)
+    );
+    const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
       durability,
     });
-    const objectStore = transaction.objectStore(TABLE_NAME);
+
+    const getObjectStore = memoize((partitionKey: string) => {
+      const storeName = getTableFullname(partitionKey);
+      return transaction.objectStore(storeName);
+    });
     const requests: Promise<number>[] = [];
     for (let i = 0; i < readAllCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          const readReq = objectStore.getAll();
-          readReq.onsuccess = function () {
-            const result = readReq.result;
-            const resultLength = result.length;
-            if (resultLength !== datasetSize) {
-              console.error(
-                "[idb][read-all][one-transaction] insufficient full traverse",
-                {
-                  resultLength,
-                  datasetSize,
-                }
+      const start = performance.now();
+      if (window.PARTITION_MODE) {
+        requests.push(
+          new Promise<number>((resolve, reject) => {
+            const start = performance.now();
+            const objectStore = getObjectStore(window.SELECTED_PARTITION_KEY);
+            const readReq = objectStore.getAll();
+            readReq.onsuccess = function () {
+            //   const result = readReq.result;
+            //   const resultLength = result.length;
+            //   if (resultLength !== datasetSize) {
+            //     console.error(
+            //       "[idb][read-all][one-transaction] insufficient full traverse",
+            //       {
+            //         resultLength,
+            //         datasetSize,
+            //       }
+            //     );
+            //   }
+              const end = performance.now();
+              resolve(end - start);
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-all", "one-transaction"],
+                })
               );
-            }
-            const end = performance.now();
-            resolve(end - start);
-          };
-          readReq.onerror = function () {
-            reject(
-              patchDOMException(readReq.error!, {
+            };
+          })
+        );
+      } else {
+        const subRequests: Promise<number>[] = [];
+        for (const partitionKey of allPartitionKeys) {
+          const objectStore = getObjectStore(partitionKey);
+          subRequests.push(
+            new Promise<number>((resolve, reject) => {
+              const readReq = objectStore.getAll();
+              readReq.onsuccess = function () {
+                const result = readReq.result;
+                resolve(result.length);
+              };
+              readReq.onerror = function () {
+                reject(readReq.error);
+              };
+            })
+          );
+        }
+        requests.push(
+          Promise.all(subRequests)
+            .then((totalList) => {
+              const resultLength = totalList.reduce(
+                (result, current) => result + current,
+                0
+              );
+              if (resultLength !== datasetSize) {
+                console.error(
+                  "[idb][read-all][one-transaction] insufficient full traverse",
+                  {
+                    resultLength,
+                    datasetSize,
+                  }
+                );
+              }
+              const end = performance.now();
+              return end - start;
+            })
+            .catch((e) => {
+              throw patchDOMException(e, {
                 tags: ["idb", "read-all", "one-transaction"],
-              })
-            );
-          };
-        })
-      );
+              });
+            })
+        );
+      }
     }
     const start = performance.now();
     const results = await Promise.all(requests);
     const end = performance.now();
     oneTransactionSum = end - start;
-	
+
     const accumulateSum = results.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / readAllCount;
-	
+
     removeLog(logId);
   }
   //#endregion

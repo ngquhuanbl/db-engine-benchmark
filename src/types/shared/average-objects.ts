@@ -44,7 +44,6 @@ export const averageFnResults = <P extends any[], R extends any>(
     }
 	
     const averageResult = averageOfObjects(resultList);
-	console.log({ resultList, averageResult })
     return averageResult as R;
   };
 };

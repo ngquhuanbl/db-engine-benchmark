@@ -185,4 +185,6 @@ declare global {
     ) => void;
     sendMessage: (message: Message) => void;
   };
+  var PARTITION_MODE: boolean;
+  var SELECTED_PARTITION_KEY: string;
 }
