@@ -45,6 +45,7 @@ const originalExecute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][n-transaction] write");
+    const durations: number[] = [];
     const requests: Promise<void>[] = [];
 
     for (let i = 0; i < datasetSize; i += 1) {
@@ -55,13 +56,20 @@ const originalExecute = async (
         durability,
       });
       const objectStore = transaction.objectStore(fullname);
-      const writeReq = objectStore.add(item);
       requests.push(
         new Promise<void>((resolve, reject) => {
+          const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
+          const writeReq = objectStore.add(item);
           writeReq.onsuccess = function () {
+            finish();
             resolve();
           };
           writeReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(writeReq.error!, {
                 tags: ["idb", "single-read-write", "n-transaction", "write"],
@@ -71,18 +79,19 @@ const originalExecute = async (
         })
       );
     }
-    const start = performance.now();
-    let end = -1;
     await Promise.all(requests).finally(() => {
-      end = performance.now();
       removeLog(logId);
     });
-    nTransactionWrite = end - start;
+    nTransactionWrite = durations.reduce(
+      (result, current) => current + result,
+      0
+    );
   }
 
   // READ
   {
     const logId = addLog("[idb][single-read-write][n-transaction] read");
+    const durations: number[] = [];
     const requests: Promise<void>[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
@@ -92,13 +101,20 @@ const originalExecute = async (
         durability,
       });
       const objectStore = transaction.objectStore(fullname);
-      const readReq = objectStore.get(item.msgId);
       requests.push(
         new Promise<void>((resolve, reject) => {
+          const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
+          const readReq = objectStore.get(item.msgId);
           readReq.onsuccess = function () {
+            finish();
             resolve();
           };
           readReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(readReq.error!, {
                 tags: ["idb", "single-read-write", "n-transaction", "read"],
@@ -108,13 +124,13 @@ const originalExecute = async (
         })
       );
     }
-    const start = performance.now();
-    let end = -1;
     await Promise.all(requests).finally(() => {
-      end = performance.now();
       removeLog(logId);
     });
-    nTransactionRead = end - start;
+    nTransactionRead = durations.reduce(
+      (result, current) => current + result,
+      0
+    );
   }
   //#endregion
 
@@ -137,17 +153,25 @@ const originalExecute = async (
       return transaction.objectStore(storeName);
     });
     const requests: Promise<void>[] = [];
+    const durations: number[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
       const objectStore = getObjectStore(partitionKey);
-      const writeReq = objectStore.add(item);
       requests.push(
         new Promise<void>((resolve, reject) => {
+          const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
+          const writeReq = objectStore.add(item);
           writeReq.onsuccess = function () {
+            finish();
             resolve();
           };
           writeReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(writeReq.error!, {
                 tags: ["idb", "single-read-write", "n-transaction", "write"],
@@ -157,13 +181,13 @@ const originalExecute = async (
         })
       );
     }
-    const start = performance.now();
-    let end = -1;
     await Promise.all(requests).finally(() => {
-      end = performance.now();
       removeLog(logId);
     });
-    oneTransactionWrite = end - start;
+    oneTransactionWrite = durations.reduce(
+      (result, current) => result + current,
+      0
+    );
   }
   // READ
   {
@@ -178,17 +202,25 @@ const originalExecute = async (
       return transaction.objectStore(storeName);
     });
     const requests: Promise<void>[] = [];
+    const durations: number[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
       const objectStore = getObjectStore(partitionKey);
-      const readReq = objectStore.get(item.msgId);
       requests.push(
         new Promise<void>((resolve, reject) => {
+          const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
+          const readReq = objectStore.get(item.msgId);
           readReq.onsuccess = function () {
+            finish();
             resolve();
           };
           readReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(readReq.error!, {
                 tags: ["idb", "single-read-write", "n-transaction", "read"],
@@ -198,13 +230,13 @@ const originalExecute = async (
         })
       );
     }
-    const start = performance.now();
-    let end = -1;
     await Promise.all(requests).finally(() => {
-      end = performance.now();
       removeLog(logId);
     });
-    oneTransactionRead = end - start;
+    oneTransactionRead = durations.reduce(
+      (result, current) => result + current,
+      0
+    );
   }
 
   //#endregion

@@ -1,5 +1,4 @@
 import memoize from "fast-memoize";
-import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadByRangeExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByRangeResult } from "../../../../types/shared/result";
@@ -28,9 +27,10 @@ const originalExecute = async (
 
   //#region n transaction
   {
+    const durations: number[] = [];
     const requests = ranges.map(({ from, to }, index) => {
       if (PARTITION_MODE) {
-        return new Promise<number>((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
           const logId = addLog(
             `[idb][read-by-range][n-transaction] range ${index}`
           );
@@ -40,6 +40,10 @@ const originalExecute = async (
           });
           const objectStore = transaction.objectStore(fullname);
           const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
           const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
           readReq.onsuccess = function () {
             // const result = readReq.result;
@@ -56,11 +60,12 @@ const originalExecute = async (
             //     }
             //   );
             // }
-            const end = performance.now();
-            resolve(end - start);
+            finish();
+            resolve();
             removeLog(logId);
           };
           readReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(readReq.error!, {
                 tags: [
@@ -91,25 +96,30 @@ const originalExecute = async (
           return transaction.objectStore(fullnamme);
         });
 
-        const start = performance.now();
-        let results: any[] = [];
+        let resultLength = 0;
         return Promise.all(
           allPartitionKeys.map((partitionKey) => {
             const objectStore = getObjectStore(partitionKey);
+            const start = performance.now();
+            const finish = () => {
+              const end = performance.now();
+              durations.push(end - start);
+            };
             const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
             return new Promise<void>((resolve, reject) => {
               readReq.onsuccess = function () {
-                results.push(...readReq.result);
+                finish();
+                resultLength += readReq.result.length;
                 resolve();
               };
               readReq.onerror = function (e) {
+                finish();
                 reject(e);
               };
             });
           })
         )
           .then(() => {
-            const resultLength = results.length;
             const size = +to - +from + 1;
             if (size !== resultLength) {
               console.error(
@@ -122,8 +132,6 @@ const originalExecute = async (
                 }
               );
             }
-            const end = performance.now();
-            return end - start;
           })
           .catch((e) => {
             throw patchDOMException(e, {
@@ -136,11 +144,11 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(requests);
     const end = performance.now();
     nTransactionSum = end - start;
 
-    const accumulateSum = results.reduce(
+    const accumulateSum = durations.reduce(
       (result, current) => result + current,
       0
     );
@@ -158,14 +166,19 @@ const originalExecute = async (
       const fullname = getTableFullname(paritionKey);
       return transaction.objectStore(fullname);
     };
+    const durations: number[] = [];
     const requests = ranges.map(({ from, to }, index) => {
       if (PARTITION_MODE) {
-        return new Promise<number>((resolve, reject) => {
-          const logId = addLog(
-            `[idb][read-by-range][one-transaction] range ${index}`
-          );
-          const objectStore = getObjectStore(SELECTED_PARTITION_KEY)
+        const logId = addLog(
+          `[idb][read-by-range][one-transaction] range ${index}`
+        );
+        return new Promise<void>((resolve, reject) => {
+          const objectStore = getObjectStore(SELECTED_PARTITION_KEY);
           const start = performance.now();
+          const finish = () => {
+            const end = performance.now();
+            durations.push(end - start);
+          };
           const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
           readReq.onsuccess = function () {
             // const result = readReq.result;
@@ -182,11 +195,12 @@ const originalExecute = async (
             //     }
             //   );
             // }
-            const end = performance.now();
-            resolve(end - start);
+            finish();
+            resolve();
             removeLog(logId);
           };
           readReq.onerror = function () {
+            finish();
             reject(
               patchDOMException(readReq.error!, {
                 tags: [
@@ -204,25 +218,30 @@ const originalExecute = async (
         const logId = addLog(
           `[idb][read-by-range][one-transaction] range ${index}`
         );
-        const start = performance.now();
-        let results: any[] = [];
+        let resultLength = 0;
         return Promise.all(
           allPartitionKeys.map((partitionKey) => {
             const objectStore = getObjectStore(partitionKey);
-            const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
             return new Promise<void>((resolve, reject) => {
+              const start = performance.now();
+              const finish = () => {
+                const end = performance.now();
+                durations.push(end - start);
+              };
+              const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
               readReq.onsuccess = function () {
-                results.push(...readReq.result);
+                finish();
+                resultLength += readReq.result.length;
                 resolve();
               };
               readReq.onerror = function (e) {
+                finish();
                 reject(e);
               };
             });
           })
         )
           .then(() => {
-            const resultLength = results.length;
             const size = +to - +from + 1;
             if (size !== resultLength) {
               console.error(
@@ -254,11 +273,11 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(requests);
     const end = performance.now();
     oneTransactionSum = end - start;
 
-    const accumulateSum = results.reduce(
+    const accumulateSum = durations.reduce(
       (result, current) => result + current,
       0
     );

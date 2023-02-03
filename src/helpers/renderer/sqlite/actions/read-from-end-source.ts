@@ -4,6 +4,7 @@ import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
+import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
@@ -17,7 +18,7 @@ const originalExecute = async (
     readFromEndSourceCount: DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
   }
 ): Promise<ReadFromEndSourceResult> => {
-  const conn = await openSQLiteDatabase();
+  const allPartitionKeys = getAllPossibleConvIds();
 
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
@@ -27,145 +28,269 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog(
-      "[preloaded-sqlite][read-from-end-source][n-transaction] read"
+      "[nodeIntegration-sqlite][read-from-end-source][n-transaction] read"
     );
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
       " , "
     )}`;
-    const requests: Promise<number>[] = [];
+    const durations: number[] = [];
+    const countRequests: Promise<void>[] = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: [
-                    "preload-sqlite",
-                    "read-from-end-source",
-                    "n-transaction",
-                  ],
-                })
-              );
-            else {
+      if (PARTITION_MODE) {
+        countRequests.push(
+          new Promise((resolve, reject) => {
+            const start = performance.now();
+            const finish = () => {
               const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
-                console.error(
-                  "[preloaded-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
+              durations.push(end - start);
+            };
+            openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
+              conn.all(query, undefined, (error) => {
+                finish();
+                if (error)
+                  reject(
+                    patchJSError(error, {
+                      tags: [
+                        "nodeIntegration-sqlite",
+                        "read-from-end-source",
+                        "n-transaction",
+                      ],
+                    })
+                  );
+                else {
+                  // No need to do checksum since we only traverse one partition
+                  resolve();
+                }
+              })
+            );
+          })
+        );
+      } else {
+        let resultLength = 0;
+        const partitionRequests = allPartitionKeys.map(
+          (partitionKey) =>
+            new Promise<void>((resolve, reject) => {
+              const start = performance.now();
+              const finish = () => {
+                const end = performance.now();
+                durations.push(end - start);
+              };
+              openSQLiteDatabase(partitionKey).then((conn) => {
+                conn.all(query, undefined, (error, rows) => {
+                  finish();
+                  if (error)
+                    reject(
+                      patchJSError(error, {
+                        tags: [
+                          "nodeIntegration-sqlite",
+                          "read-from-end-source",
+                          "n-transaction",
+                        ],
+                      })
+                    );
+                  else {
+                    resultLength += rows.length;
+                    resolve();
                   }
-                );
-              }
-              resolve(end - start);
+                });
+              });
+            })
+        );
+        countRequests.push(
+          Promise.all(partitionRequests).then(() => {
+            if (resultLength !== datasetSize) {
+              console.error(
+                "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
+                {
+                  resultLength,
+                  datasetSize,
+                }
+              );
             }
-          });
-        })
-      );
+          })
+        );
+      }
     }
-    const start = performance.now()
-    const results = await Promise.all(requests);
-	const end = performance.now();
-	nTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    const start = performance.now();
+    await Promise.all(countRequests);
+    const end = performance.now();
+    nTransactionSum = end - start;
+
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     nTransactionAverage = accumulateSum / readFromEndSourceCount;
-	
-	removeLog(logId);
+
+    removeLog(logId);
   }
   //#endregion
 
   //#region one transaction
   {
+    const durations: number[] = [];
+    const logId = addLog(
+      "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
+    );
     const start = performance.now();
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
-      const logId = addLog(
-        "[preloaded-sqlite][read-from-end-source][one-transaction] read"
-      );
-      conn.serialize((conn) => {
-        conn.run("BEGIN TRANSACTION", (error) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "preload-sqlite",
-                  "read-from-end-source",
-                  "1-transaction",
-                  "begin-transaction",
-                ],
-              })
-            );
-        });
-
-        for (let i = 0; i < readFromEndSourceCount; i += 1) {
-          const query = `SELECT * FROM ${escapeStr(
-            TABLE_NAME
-          )} ORDER BY ${PRIMARY_KEYS.map(
-            (key) => `${escapeStr(key)} DESC`
-          ).join(" , ")}`;
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error) {
-              reject(
-                patchJSError(error, {
-                  tags: [
-                    "preload-sqlite",
-                    "read-from-end-source",
-                    "1-transaction",
-                  ],
-                })
-              );
-            } else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[preloaded-sqlite][read-from-end-source][one-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
+    if (PARTITION_MODE) {
+      await new Promise<void>((resolve, reject) => {
+        const start = performance.now();
+        const finish = () => {
+          const end = performance.now();
+          durations.push(end - start);
+        };
+        openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
+          conn.serialize(() => {
+            conn.run("BEGIN TRANSACTION", (error) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "nodeIntegration-sqlite",
+                      "read-from-end-source",
+                      "1-transaction",
+                      "begin-transaction",
+                    ],
+                  })
                 );
-              }
-              results.push(end - start);
-            }
-          });
-        }
+            });
 
-        conn.run("COMMIT TRANSACTION", (error) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "preload-sqlite",
-                  "read-from-end-source",
-                  "1-transaction",
-                  "commit-transaction",
-                ],
-              })
-            );
-          else resolve(results);
-          removeLog(logId);
-        });
+            for (let i = 0; i < readFromEndSourceCount; i += 1) {
+              const query = `SELECT * FROM ${escapeStr(
+                TABLE_NAME
+              )} ORDER BY ${PRIMARY_KEYS.map(
+                (key) => `${escapeStr(key)} DESC`
+              ).join(" , ")}`;
+              conn.all(query, undefined, (error) => {
+                if (error) {
+                  reject(
+                    patchJSError(error, {
+                      tags: [
+                        "nodeIntegration-sqlite",
+                        "read-from-end-source",
+                        "1-transaction",
+                      ],
+                    })
+                  );
+                } else {
+                  // No need to do checksum since we only visit one partition
+                }
+              });
+            }
+
+            conn.run("COMMIT TRANSACTION", (error) => {
+              finish();
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "nodeIntegration-sqlite",
+                      "read-from-end-source",
+                      "1-transaction",
+                      "commit-transaction",
+                    ],
+                  })
+                );
+              else resolve();
+            });
+          })
+        );
       });
-    });
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    } else {
+      let resultLengths: Record<number, number> = {};
+      const partitionRequests = allPartitionKeys.map(
+        (partitionKey) =>
+          new Promise<void>((resolve, reject) => {
+            const start = performance.now();
+            const finish = () => {
+              const end = performance.now();
+              durations.push(end - start);
+            };
+            openSQLiteDatabase(partitionKey).then((conn) => {
+              conn.serialize((conn) => {
+                conn.run("BEGIN TRANSACTION", (error) => {
+                  if (error)
+                    reject(
+                      patchJSError(error, {
+                        tags: [
+                          "nodeIntegration-sqlite",
+                          "read-from-end-source",
+                          "1-transaction",
+                          "begin-transaction",
+                        ],
+                      })
+                    );
+                });
+
+                for (let i = 0; i < readFromEndSourceCount; i += 1) {
+                  const query = `SELECT * FROM ${escapeStr(
+                    TABLE_NAME
+                  )} ORDER BY ${PRIMARY_KEYS.map(
+                    (key) => `${escapeStr(key)} DESC`
+                  ).join(" , ")}`;
+                  conn.all(query, undefined, (error, rows) => {
+                    if (error) {
+                      reject(
+                        patchJSError(error, {
+                          tags: [
+                            "nodeIntegration-sqlite",
+                            "read-from-end-source",
+                            "1-transaction",
+                          ],
+                        })
+                      );
+                    } else {
+                      if (resultLengths[i] === undefined) resultLengths[i] = 0;
+                      resultLengths[i] += rows.length;
+                    }
+                  });
+                }
+
+                conn.run("COMMIT TRANSACTION", (error) => {
+                  finish();
+                  if (error)
+                    reject(
+                      patchJSError(error, {
+                        tags: [
+                          "nodeIntegration-sqlite",
+                          "read-from-end-source",
+                          "1-transaction",
+                          "commit-transaction",
+                        ],
+                      })
+                    );
+                  else resolve();
+                });
+              });
+            });
+          })
+      );
+      await Promise.all(partitionRequests);
+
+      for (const resultLength of Object.values(resultLengths)) {
+        if (resultLength !== datasetSize) {
+          console.error(
+            "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
+            {
+              resultLength,
+              datasetSize,
+            }
+          );
+        }
+      }
+    }
+
+    removeLog(logId);
+    const end = performance.now();
+    oneTransactionSum = end - start;
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / readFromEndSourceCount;
   }
   //#endregion
 
-  conn.close((error) => {
-    if (error) throw error;
-  });
+  //   conn.close((error) => {
+  //     if (error) throw error;
+  //   });
 
   return {
     nTransactionAverage,

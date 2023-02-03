@@ -4,6 +4,7 @@ import { ReadAllExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadAllResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
+import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { openSQLiteDatabase } from "../common";
 
@@ -15,12 +16,12 @@ const originalExecute = async (
   removeLog: (id: number) => void,
   { readAllCount }: ReadAllExtraData = { readAllCount: DEFAULT_READ_ALL_COUNT }
 ): Promise<ReadAllResult> => {
-  const conn = await openSQLiteDatabase();
-
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
   let oneTransactionAverage = -1;
   let oneTransactionSum = -1;
+
+  const allPartititonKeys = getAllPossibleConvIds();
 
   //#region n transaction
   {
@@ -28,22 +29,60 @@ const originalExecute = async (
       "[preloaded-sqlite][read-all][n-transaction] read all"
     );
     const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
-    const requests: Promise<number>[] = [];
+    const durations: number[] = [];
+    const countRequests: Promise<void>[] = [];
     for (let i = 0; i < readAllCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: ["preload-sqlite", "read-all", "n-transaction"],
+      if (PARTITION_MODE) {
+        countRequests.push(
+          new Promise<void>((resolve, reject) => {
+            const start = performance.now();
+            const finish = () => {
+              const end = performance.now();
+              durations.push(end - start);
+            };
+            openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
+              conn.all(query, undefined, (error, rows) => {
+                finish();
+                if (error)
+                  reject(
+                    patchJSError(error, {
+                      tags: ["preload-sqlite", "read-all", "n-transaction"],
+                    })
+                  );
+                else {
+                  // Traverse one partition -> No need to do checksum
+                  resolve();
+                }
+              })
+            );
+          })
+        );
+      } else {
+        let resultLength = 0;
+        const partitionRequests = allPartititonKeys.map(
+          (partitionKey) =>
+            new Promise<void>((resolve, reject) => {
+              const start = performance.now();
+              const finish = () => {
+                const end = performance.now();
+                durations.push(end - start);
+              };
+              openSQLiteDatabase(partitionKey).then((conn) =>
+                conn.all(query, undefined, (error, rows) => {
+                  finish();
+                  if (error) reject(error);
+                  else {
+                    resultLength += rows.length;
+                    resolve();
+                  }
                 })
               );
-            else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
+            })
+        );
+        countRequests.push(
+          Promise.all(partitionRequests)
+            .then(() => {
+              if (resultLength !== datasetSize) {
                 console.error(
                   "[preloaded-sqlite][read-all][n-transaction] insufficient full traverse",
                   {
@@ -52,18 +91,21 @@ const originalExecute = async (
                   }
                 );
               }
-              resolve(end - start);
-            }
-          });
-        })
-      );
+            })
+            .catch((e) => {
+              throw patchJSError(e, {
+                tags: ["preloaded-sqlite", "read-all", "n-transaction"],
+              });
+            })
+        );
+      }
     }
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(countRequests);
     const end = performance.now();
     nTransactionSum = end - start;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     nTransactionAverage = accumulateSum / readAllCount;
 
     removeLog(logId);
@@ -73,83 +115,163 @@ const originalExecute = async (
   //#region one transaction
   {
     const start = performance.now();
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
+    const durations: number[] = [];
+    if (PARTITION_MODE) {
       const logId = addLog(
         "[preloaded-sqlite][read-all][one-transaction] read all"
       );
-      conn.serialize((conn) => {
-        conn.run("BEGIN TRANSACTION", (error) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "preload-sqlite",
-                  "read-all",
-                  "1-transaction",
-                  "3 ranges",
-                  "begin-transaction",
-                ],
-              })
-            );
-        });
+      await new Promise<void>((resolve, reject) => {
+        const start = performance.now();
+        const finish = () => {
+          const end = performance.now();
+          durations.push(end - start);
+        };
+        openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
+          conn.serialize(() => {
+            conn.run("BEGIN TRANSACTION", (error) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "preloaded-sqlite",
+                      "read-all",
+                      "1-transaction",
+                      "3 ranges",
+                      "begin-transaction",
+                    ],
+                  })
+                );
+            });
 
-        for (let i = 0; i < readAllCount; i += 1) {
-          const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error) {
-              reject(
-                patchJSError(error, {
-                  tags: ["preload-sqlite", "read-all", "1-transaction"],
+            for (let i = 0; i < readAllCount; i += 1) {
+              const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
+              conn.all(query, undefined, (error) => {
+                if (error) {
+                  reject(
+                    patchJSError(error, {
+                      tags: ["preloaded-sqlite", "read-all", "1-transaction"],
+                    })
+                  );
+                }
+              });
+            }
+
+            conn.run("COMMIT TRANSACTION", (error) => {
+              finish();
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "preloaded-sqlite",
+                      "read-all",
+                      "1-transaction",
+                      "3 ranges",
+                      "commit-transaction",
+                    ],
+                  })
+                );
+              else resolve();
+              removeLog(logId);
+            });
+          })
+        );
+      });
+    } else {
+      const resultLengths: Record<number, number> = {};
+      const logId = addLog(
+        "[preloaded-sqlite][read-all][one-transaction] read all"
+      );
+      await Promise.all(
+        allPartititonKeys.map(
+          (partitionKey) =>
+            new Promise<void>((resolve, reject) => {
+              const start = performance.now();
+              const finish = () => {
+                const end = performance.now();
+                durations.push(end - start);
+              };
+              openSQLiteDatabase(partitionKey).then((conn) =>
+                conn.serialize((conn) => {
+                  conn.run("BEGIN TRANSACTION", (error) => {
+                    if (error)
+                      reject(
+                        patchJSError(error, {
+                          tags: [
+                            "preloaded-sqlite",
+                            "read-all",
+                            "1-transaction",
+                            "begin-transaction",
+                          ],
+                        })
+                      );
+                  });
+                  for (let i = 0; i < readAllCount; i += 1) {
+                    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
+                    conn.all(query, undefined, (error, rows) => {
+                      if (error) {
+                        reject(
+                          patchJSError(error, {
+                            tags: [
+                              "preloaded-sqlite",
+                              "read-all",
+                              "1-transaction",
+                            ],
+                          })
+                        );
+                      } else {
+                        if (resultLengths[i] === undefined) {
+                          resultLengths[i] = 0;
+                        }
+                        resultLengths[i] += rows.length;
+                      }
+                    });
+                  }
+                  conn.run("COMMIT TRANSACTION", (error) => {
+                    finish();
+                    if (error)
+                      reject(
+                        patchJSError(error, {
+                          tags: [
+                            "preloaded-sqlite",
+                            "read-all",
+                            "1-transaction",
+                            "commit-transaction",
+                          ],
+                        })
+                      );
+                    else resolve();
+                  });
                 })
               );
-            } else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[preloaded-sqlite][read-all][one-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              results.push(end - start);
-            }
-          });
-        }
+            })
+        )
+      );
 
-        conn.run("COMMIT TRANSACTION", (error) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "preload-sqlite",
-                  "read-all",
-                  "1-transaction",
-                  "3 ranges",
-                  "commit-transaction",
-                ],
-              })
-            );
-          else resolve(results);
-          removeLog(logId);
-        });
-      });
-    });
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+      for (const resultLength of Object.values(resultLengths)) {
+        if (resultLength !== datasetSize) {
+          console.error(
+            "[preloaded-sqlite][read-all][n-transaction] insufficient full traverse",
+            {
+              resultLength,
+              datasetSize,
+            }
+          );
+        }
+      }
+      removeLog(logId);
+    }
+
+    const end = performance.now();
+    oneTransactionSum = end - start;
+
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / readAllCount;
   }
   //#endregion
 
-  conn.close((error) => {
-    if (error) throw error;
-  });
+  //   conn.close((error) => {
+  //     if (error) throw error;
+  //   });
 
   return {
     nTransactionAverage,

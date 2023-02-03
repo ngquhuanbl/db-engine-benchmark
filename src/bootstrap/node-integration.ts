@@ -18,6 +18,7 @@ import {
   ReadFromEndSourceMessageResult,
   SingleReadWriteMessageResult,
 } from "../types/shared/message-port";
+import './global';
 
 messageBroker.addMessageListener(function (_, request) {
   const { id: msgId, type: msgType } = request;

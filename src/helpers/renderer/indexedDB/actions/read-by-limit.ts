@@ -35,11 +35,12 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog("[idb][read-by-limit][n-transaction] read");
-    const requests: Promise<number>[] = [];
+    const durations: number[] = [];
+    const requests: Promise<void>[] = [];
     for (let i = 0; i < count; i += 1) {
       if (window.PARTITION_MODE) {
         requests.push(
-          new Promise<number>((resolve, reject) => {
+          new Promise<void>((resolve, reject) => {
             const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
 
             const transaction = dbInstance.transaction(fullname, "readonly", {
@@ -47,21 +48,23 @@ const originalExecute = async (
             });
             const objectStore = transaction.objectStore(fullname);
             const start = performance.now();
-            const readReq = objectStore.openCursor();
-            const result = [];
             const finish = () => {
               const end = performance.now();
-              resolve(end - start);
+              durations.push(end - start);
             };
+            const readReq = objectStore.openCursor();
+            let resultLength = 0;
             readReq.onsuccess = function () {
               const cursor = readReq.result;
               if (cursor) {
-                result.push(cursor.value);
-                if (result.length === limit) {
+                resultLength += 1;
+                if (resultLength === limit) {
                   finish();
+                  resolve();
                 } else cursor.continue();
               } else {
                 finish();
+                resolve();
               }
             };
             readReq.onerror = function () {
@@ -75,9 +78,13 @@ const originalExecute = async (
         );
       } else {
         requests.push(
-          new Promise<number>((resolve, reject) => {
+          new Promise<void>((resolve, reject) => {
             const start = performance.now();
-            let totalEntries = 0;
+            const finish = () => {
+              const end = performance.now();
+              durations.push(end - start);
+            };
+            let resultLength = 0;
             const length = allPartitionKeys.length;
             function execute(index: number) {
               const partitionKey = allPartitionKeys[index];
@@ -87,24 +94,25 @@ const originalExecute = async (
               });
               const objectStore = transaction.objectStore(fullname);
               const readReq = objectStore.openCursor();
-              const finish = () => {
-                const end = performance.now();
-                resolve(end - start);
-              };
               readReq.onsuccess = function () {
                 const cursor = readReq.result;
                 if (cursor) {
-                  totalEntries += 1;
-                  if (totalEntries === limit) {
+                  resultLength += 1;
+                  if (resultLength === limit) {
                     finish();
+                    resolve();
                   } else cursor.continue();
                 } else {
-                  if (totalEntries < limit && index < length - 1) {
+                  if (resultLength < limit && index < length - 1) {
                     execute(index + 1);
-                  } else finish();
+                  } else {
+                    finish();
+                    resolve();
+                  }
                 }
               };
               readReq.onerror = function () {
+                finish();
                 reject(
                   patchDOMException(readReq.error!, {
                     tags: ["idb", "read-by-limit", "n-transaction"],
@@ -118,11 +126,11 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(requests);
     const end = performance.now();
     nTransactionSum = end - start;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     nTransactionAverage = accumulateSum / count;
 
     removeLog(logId);
@@ -143,31 +151,35 @@ const originalExecute = async (
       const storeName = getTableFullname(partitionKey);
       return transaction.objectStore(storeName);
     });
-    const requests: Promise<number>[] = [];
+    const durations: number[] = [];
+    const requests: Promise<void>[] = [];
     for (let i = 0; i < count; i += 1) {
-      const start = performance.now();
       requests.push(
-        new Promise<number>((resolve, reject) => {
+        new Promise<void>((resolve, reject) => {
           if (window.PARTITION_MODE) {
             const objectStore = getObjectStore(window.SELECTED_PARTITION_KEY);
-            const readReq = objectStore.openCursor();
             const result = [];
+            const start = performance.now();
             const finish = () => {
               const end = performance.now();
-              resolve(end - start);
+              durations.push(end - start);
             };
+            const readReq = objectStore.openCursor();
             readReq.onsuccess = function () {
               const cursor = readReq.result;
               if (cursor) {
                 result.push(cursor.value);
                 if (result.length === limit) {
                   finish();
+                  resolve();
                 } else cursor.continue();
               } else {
                 finish();
+                resolve();
               }
             };
             readReq.onerror = function () {
+              finish();
               reject(
                 patchDOMException(readReq.error!, {
                   tags: ["idb", "read-by-limit", "one-transaction"],
@@ -175,7 +187,7 @@ const originalExecute = async (
               );
             };
           } else {
-            let totalEntries = 0;
+            let resultLength = 0;
             const length = allPartitionKeys.length;
             const execute = (index: number) => {
               const partitionKey = allPartitionKeys[index];
@@ -183,22 +195,27 @@ const originalExecute = async (
               const readReq = objectStore.openCursor();
               const finish = () => {
                 const end = performance.now();
-                resolve(end - start);
+                durations.push(end - start);
               };
               readReq.onsuccess = function () {
                 const cursor = readReq.result;
                 if (cursor) {
-                  totalEntries += 1;
-                  if (totalEntries === limit) {
+                  resultLength += 1;
+                  if (resultLength === limit) {
                     finish();
+                    resolve();
                   } else cursor.continue();
                 } else {
-                  if (totalEntries < limit && index < length - 1) {
+                  if (resultLength < limit && index < length - 1) {
                     execute(index + 1);
-                  } else finish();
+                  } else {
+                    finish();
+                    resolve();
+                  }
                 }
               };
               readReq.onerror = function () {
+                finish();
                 reject(
                   patchDOMException(readReq.error!, {
                     tags: ["idb", "read-by-limit", "one-transaction"],
@@ -216,7 +233,7 @@ const originalExecute = async (
     const end = performance.now();
     oneTransactionSum = end - start;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
+    const accumulateSum = durations.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / count;
 
     removeLog(logId);

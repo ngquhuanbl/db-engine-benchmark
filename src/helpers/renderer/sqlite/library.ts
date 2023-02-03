@@ -17,14 +17,12 @@ export class Database implements SQLite3Database {
 
   constructor(
     filename: string,
-    mode?: number,
     callback?: (err: Error | null) => void
   ) {
     this.connectionIDContainer = new AsyncContainer();
 
     preloadedSQLite3.Database.getConnectionID(
       filename,
-      mode,
       (error, connectionID) => {
         if (error) {
           this.connectionIDContainer.reject(error);
@@ -92,8 +90,14 @@ export class Database implements SQLite3Database {
       const args = [sql, params, callback, ...rest].filter(
         (item) => item !== undefined
       );
-      // @ts-ignore
-      preloadedSQLite3.Database.get(connectionID, ...args);
+	  try {
+		  // @ts-ignore
+		  preloadedSQLite3.Database.get(connectionID, ...args);
+	  } catch (e) {
+		console.log(preloadedSQLite3.Database === undefined);
+		console.log(connectionID, ...args)
+		throw e;
+	  }
     });
 
     return this;

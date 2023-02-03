@@ -30,7 +30,6 @@ declare global {
 
       getConnectionID(
         filename: string,
-        mode?: number,
         callback?: (error: Error | null, connectionID: string) => void
       ): void;
 
@@ -173,7 +172,9 @@ declare global {
   var __BUNDLENAME__: { value: string };
   var dataLoader: {
     getDataset: (size: number) => Promise<Data[]>;
-	addProgressListener: (listener: (event: any, value: number) => void) => void;
+    addProgressListener: (
+      listener: (event: any, value: number) => void
+    ) => void;
   };
 
   var messageBroker: {

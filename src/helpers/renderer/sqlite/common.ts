@@ -1,22 +1,23 @@
-
-import { DB_NAME, TABLE_NAME, COLUMN_LIST_INFO, PRIMARY_KEYS, INDEX_NAME, INDEXED_KEYS } from "../../../constants/schema";
-import { Z_OPEN_MODE } from "../../../constants/sqlite";
+import {
+  DB_NAME,
+  TABLE_NAME,
+  COLUMN_LIST_INFO,
+  PRIMARY_KEYS,
+  INDEX_NAME,
+  INDEXED_KEYS,
+} from "../../../constants/schema";
 import { escapeStr } from "../../shared/escape-str";
 import { patchJSError } from "../../shared/patch-error";
 import { getDBFilePath } from "../../shared/directory";
 import { Database } from "./library";
+import { getAllPossibleConvIds } from "../../shared/generate-data";
 
-export function openSQLiteDatabase() {
+export function openSQLiteDatabase(partitionKey: string) {
   return new Promise<Database>(async (resolve, reject) => {
     try {
-      const fileName = await getDBFilePath(DB_NAME);
+      const fileName = await getDBFilePath(DB_NAME, partitionKey);
 
-      const instance = await new Promise<Database>((resolve, reject) => {
-        const res = new Database(fileName, Z_OPEN_MODE, (error: any) => {
-          if (error) reject(error);
-          else resolve(res);
-        });
-      });
+      const instance = new Database(fileName);
 
       //#region Create missing table
       const tableName = escapeStr(TABLE_NAME);
@@ -54,7 +55,7 @@ export function openSQLiteDatabase() {
 
       if (!didIndexExits) {
         await new Promise<void>((resolve, reject) => {
-          const definedFieldsSql = INDEXED_KEYS.join(' , ');
+          const definedFieldsSql = INDEXED_KEYS.join(" , ");
 
           const query: string = `CREATE INDEX ${indexName} ON ${tableName} (${definedFieldsSql})`;
           instance.run(query, (error) => (error ? reject(error) : resolve()));
@@ -70,13 +71,25 @@ export function openSQLiteDatabase() {
   });
 }
 
-export async function resetSQLiteData(conn: Database) {
-  return new Promise<void>((resolve, reject) => {
-    const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
-    conn.exec(query, (error) =>
-      error
-        ? reject(patchJSError(error, { tags: ["preload-sqlite", "reset-data"] }))
-        : resolve()
-    );
-  });
+export async function resetSQLiteData() {
+  const allPartitionKeys = getAllPossibleConvIds();
+  return Promise.all(
+    allPartitionKeys.map((partitionKey) =>
+      openSQLiteDatabase(partitionKey).then(
+        (conn) =>
+          new Promise<void>((resolve, reject) => {
+            const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
+            conn.exec(query, (error) =>
+              error
+                ? reject(
+                    patchJSError(error, {
+                      tags: ["preload-sqlite", "reset-data"],
+                    })
+                  )
+                : resolve()
+            );
+          })
+      )
+    )
+  );
 }
