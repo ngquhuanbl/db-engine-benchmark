@@ -242,7 +242,6 @@ const originalExecute = async (
                 const query = `SELECT * FROM ${escapeStr(
                   TABLE_NAME
                 )} LIMIT ${currentLimit}`;
-                const start = performance.now();
                 conn.all(query, undefined, (error, rows) => {
                   if (error) {
                     reject(
@@ -255,9 +254,6 @@ const originalExecute = async (
                       })
                     );
                   } else {
-                    const end = performance.now();
-                    durations.push(end - start);
-
                     if (i === 0) {
                       // Only update once
                       resultLength += rows.length;
