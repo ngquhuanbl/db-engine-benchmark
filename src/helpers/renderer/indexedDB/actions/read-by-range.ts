@@ -4,6 +4,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByRangeResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadByRange } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -28,6 +29,7 @@ const originalExecute = async (
   //#region n transaction
   {
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     const requests = ranges.map(({ from, to }, index) => {
       if (PARTITION_MODE) {
         return new Promise<void>((resolve, reject) => {
@@ -110,6 +112,11 @@ const originalExecute = async (
               readReq.onsuccess = function () {
                 finish();
                 resultLength += readReq.result.length;
+
+                if (results[index] === undefined) results[index] = [];
+                results[index].push(
+                  ...readReq.result.map(({ msgId }) => msgId)
+                );
                 resolve();
               };
               readReq.onerror = function (e) {
@@ -144,7 +151,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadByRange(results, ranges);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -167,6 +176,7 @@ const originalExecute = async (
       return transaction.objectStore(fullname);
     };
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     const requests = ranges.map(({ from, to }, index) => {
       if (PARTITION_MODE) {
         const logId = addLog(
@@ -232,6 +242,10 @@ const originalExecute = async (
               readReq.onsuccess = function () {
                 finish();
                 resultLength += readReq.result.length;
+                if (results[index] === undefined) results[index] = [];
+                results[index].push(
+                  ...readReq.result.map(({ msgId }) => msgId)
+                );
                 resolve();
               };
               readReq.onerror = function (e) {
@@ -273,7 +287,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadByRange(results, ranges);
+    });
     const end = performance.now();
     oneTransactionSum = end - start;
 

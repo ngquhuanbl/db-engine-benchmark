@@ -6,6 +6,7 @@ import { ReadAllResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { lastOfArray } from "../../../shared/last-of-array";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadAll } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -33,6 +34,7 @@ const originalExecute = async (
     const logId = addLog("[idb][read-all][n-transaction] read all");
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const result: Array<string[]> = [];
     for (let i = 0; i < readAllCount; i += 1) {
       if (window.PARTITION_MODE) {
         const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
@@ -111,6 +113,7 @@ const originalExecute = async (
         );
       } else {
         let resultLength = 0;
+        const resultByCount: string[] = [];
         const partitionRequests: Promise<void>[] = allPartitionKeys.map(
           (partitionKey) => {
             const fullname = getTableFullname(partitionKey);
@@ -143,12 +146,14 @@ const originalExecute = async (
                       reject(openCursorReq.error!);
                     };
                     openCursorReq.onsuccess = function () {
-                      const subResult = openCursorReq.result;
+                      const subResult: { msgId: string }[] =
+                        openCursorReq.result;
                       lastDoc = lastOfArray(subResult);
                       if (subResult.length === 0) {
                         done = true;
                         finish();
                         resultLength += result.length;
+                        resultByCount.push(...result.map(({ msgId }) => msgId));
                         resolve();
                       } else result.concat(subResult);
                       subResolve();
@@ -160,6 +165,9 @@ const originalExecute = async (
                 readReq.onsuccess = function () {
                   finish();
                   resultLength += readReq.result.length;
+                  resultByCount.push(
+                    ...readReq.result.map(({ msgId }) => msgId)
+                  );
                   resolve();
                 };
                 readReq.onerror = function () {
@@ -182,6 +190,7 @@ const originalExecute = async (
                   }
                 );
               }
+              result.push(resultByCount);
             })
             .catch((e) => {
               throw patchDOMException(e, {
@@ -192,7 +201,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadAll(result, datasetSize, readAllCount);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
     removeLog(logId);
@@ -217,6 +228,7 @@ const originalExecute = async (
     });
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < readAllCount; i += 1) {
       if (window.PARTITION_MODE) {
         requests.push(
@@ -255,6 +267,7 @@ const originalExecute = async (
         );
       } else {
         let resultLength = 0;
+		const subResult: string[] = []
         const partitionRequests: Promise<void>[] = allPartitionKeys.map(
           (partitionKey) => {
             const objectStore = getObjectStore(partitionKey);
@@ -269,6 +282,7 @@ const originalExecute = async (
                 finish();
                 const result = readReq.result;
                 resultLength += result.length;
+                subResult.push(...result.map(({ msgId }) => msgId));
                 resolve();
               };
               readReq.onerror = function () {
@@ -290,6 +304,7 @@ const originalExecute = async (
                   }
                 );
               }
+			  results.push(subResult)
             })
             .catch((e) => {
               throw patchDOMException(e, {
@@ -300,7 +315,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() =>
+      verifyReadAll(results, datasetSize, readAllCount)
+    );
     const end = performance.now();
     oneTransactionSum = end - start;
 

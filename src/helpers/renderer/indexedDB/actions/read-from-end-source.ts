@@ -1,3 +1,4 @@
+import { count } from "console";
 import memoize from "fast-memoize";
 import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../constants/dataset";
 
@@ -6,6 +7,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadFromEndSource } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -36,6 +38,7 @@ const originalExecute = async (
     const logId = addLog("[idb][read-from-end-source][n-transaction] read");
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       if (PARTITION_MODE) {
         requests.push(
@@ -80,7 +83,6 @@ const originalExecute = async (
         };
 
         let resultLength = 0;
-        const start = performance.now();
         const request = Promise.all(
           allPartitionKeys.map((paritionKey) => {
             const objectStore = getObjectStore(paritionKey);
@@ -95,6 +97,8 @@ const originalExecute = async (
                 const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
+                  if (results[i] == undefined) results[i] = [];
+                  results[i].push(cursor.value.msgId);
                   cursor.continue();
                 } else {
                   finish();
@@ -129,7 +133,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -152,6 +158,7 @@ const originalExecute = async (
     });
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       if (PARTITION_MODE) {
         requests.push(
@@ -208,6 +215,8 @@ const originalExecute = async (
                 const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
+                  if (results[i] === undefined) results[i] = [];
+                  results[i].push(cursor.value.msgId);
                   cursor.continue();
                 } else {
                   finish();
@@ -242,7 +251,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
+    });
     const end = performance.now();
     oneTransactionSum = end - start;
 

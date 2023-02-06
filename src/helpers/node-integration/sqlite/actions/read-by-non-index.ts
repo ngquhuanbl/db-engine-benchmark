@@ -8,6 +8,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { getNonIndexConditionSQLite } from "../../../shared/non-index-conditions";
 import { DAL } from "../library";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
+import { verifyNonIndexField } from "../../../shared/verify-result";
 
 const originalExecute = async (
   readUsingBatch: boolean,
@@ -34,6 +35,7 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} WHERE ${checkStatement}`;
+    const results: Array<any[]> = [];
     const start = performance.now();
     if (PARTITION_MODE) {
       const countRequests: Promise<void>[] = [];
@@ -120,6 +122,9 @@ const originalExecute = async (
                   else {
                     if (resultLengths[i] === undefined) resultLengths[i] = 0;
                     resultLengths[i] += rows.length;
+
+                    if (results[i] === undefined) results[i] = [];
+                    results[i].push(...rows);
                     resolve();
                   }
                   addLogRequest.then((logId) => removeLog(logId));
@@ -145,6 +150,8 @@ const originalExecute = async (
           `[nodeIntegration-sqlite][read-by-non-index][n-transaction] empty results`
         );
       }
+
+      verifyNonIndexField(results, +count);
     }
     const end = performance.now();
     nTransactionSum = end - start;
@@ -165,6 +172,7 @@ const originalExecute = async (
     )} WHERE ${checkStatement}`;
     const start = performance.now();
     const params = [];
+    const results: Array<any[]> = [];
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
         const start = performance.now();
@@ -173,7 +181,7 @@ const originalExecute = async (
           durations.push(end - start);
         };
         DB.getConnectionForConv(SELECTED_PARTITION_KEY).then((conn) => {
-          conn.serialize(() => {
+          conn.serialize((conn) => {
             conn.run("BEGIN TRANSACTION", (error) => {
               if (error)
                 reject(
@@ -240,7 +248,7 @@ const originalExecute = async (
               durations.push(end - start);
             };
             DB.getConnectionForConv(partitionKey).then((conn) =>
-              conn.serialize(() => {
+              conn.serialize((conn) => {
                 conn.run("BEGIN TRANSACTION", (error) => {
                   if (error)
                     reject(
@@ -275,6 +283,16 @@ const originalExecute = async (
                       if (resultLengths[index] === undefined)
                         resultLengths[index] = 0;
                       resultLengths[index] += rows.length;
+
+                      if (results[index] === undefined) {
+                        results[index] = [];
+                      }
+                      results[index].push(
+                        ...rows.map(({ status, isErrorInfo }) => ({
+                          status,
+                          isErrorInfo,
+                        }))
+                      );
                     }
                     addLogRequest.then((logId) => removeLog(logId));
                   });
@@ -317,6 +335,8 @@ const originalExecute = async (
           `[nodeIntegration-sqlite][read-by-non-index][one-transaction] empty results`
         );
       }
+
+      verifyNonIndexField(results, +count);
     }
 
     const end = performance.now();

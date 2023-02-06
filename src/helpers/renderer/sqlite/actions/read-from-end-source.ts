@@ -6,6 +6,7 @@ import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadFromEndSource } from "../../../shared/verify-result";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -37,6 +38,7 @@ const originalExecute = async (
     )}`;
     const durations: number[] = [];
     const countRequests: Promise<void>[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       if (PARTITION_MODE) {
         countRequests.push(
@@ -92,6 +94,8 @@ const originalExecute = async (
                     );
                   else {
                     resultLength += rows.length;
+                    if (results[i] === undefined) results[i] = [];
+                    results[i].push(...rows.map(({ msgId }) => msgId));
                     resolve();
                   }
                 });
@@ -114,7 +118,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(countRequests);
+    await Promise.all(countRequests).then(() => {
+      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -131,6 +137,7 @@ const originalExecute = async (
     const logId = addLog(
       "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
     );
+    const results: Array<string[]> = [];
     const start = performance.now();
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
@@ -140,7 +147,7 @@ const originalExecute = async (
           durations.push(end - start);
         };
         openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
-          conn.serialize(() => {
+          conn.serialize((conn) => {
             conn.run("BEGIN TRANSACTION", (error) => {
               if (error)
                 reject(
@@ -242,6 +249,9 @@ const originalExecute = async (
                     } else {
                       if (resultLengths[i] === undefined) resultLengths[i] = 0;
                       resultLengths[i] += rows.length;
+
+                      if (results[i] === undefined) results[i] = [];
+                      results[i].push(...rows.map(({ msgId }) => msgId));
                     }
                   });
                 }
@@ -278,6 +288,8 @@ const originalExecute = async (
           );
         }
       }
+
+      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
     }
 
     removeLog(logId);

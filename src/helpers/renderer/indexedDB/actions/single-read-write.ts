@@ -8,6 +8,7 @@ import {
 } from "../../../shared/generate-data";
 // import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadSingleItem } from "../../../shared/verify-result";
 import {
   getTableFullname,
   openIndexedDBDatabase,
@@ -93,6 +94,7 @@ const originalExecute = async (
     const logId = addLog("[idb][single-read-write][n-transaction] read");
     const durations: number[] = [];
     const requests: Promise<void>[] = [];
+    const result: string[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
@@ -111,6 +113,8 @@ const originalExecute = async (
           const readReq = objectStore.get(item.msgId);
           readReq.onsuccess = function () {
             finish();
+            const entry = readReq.result;
+            result.push(entry.msgId);
             resolve();
           };
           readReq.onerror = function () {
@@ -126,6 +130,7 @@ const originalExecute = async (
     }
     await Promise.all(requests).finally(() => {
       removeLog(logId);
+      verifyReadSingleItem(result, datasetSize);
     });
     nTransactionRead = durations.reduce(
       (result, current) => current + result,
@@ -203,6 +208,7 @@ const originalExecute = async (
     });
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+	const result: string[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
@@ -217,6 +223,8 @@ const originalExecute = async (
           const readReq = objectStore.get(item.msgId);
           readReq.onsuccess = function () {
             finish();
+			const entry = readReq.result;
+			result.push(entry.msgId);
             resolve();
           };
           readReq.onerror = function () {
@@ -232,6 +240,7 @@ const originalExecute = async (
     }
     await Promise.all(requests).finally(() => {
       removeLog(logId);
+	  verifyReadSingleItem(result, datasetSize)
     });
     oneTransactionRead = durations.reduce(
       (result, current) => result + current,

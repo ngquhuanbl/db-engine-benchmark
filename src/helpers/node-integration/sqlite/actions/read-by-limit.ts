@@ -11,6 +11,7 @@ import { ReadByLimitExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { DAL } from "../library";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
+import { verifyReadByLimit } from "../../../shared/verify-result";
 
 const originalExecute = async (
   readUsingBatch: boolean,
@@ -38,6 +39,7 @@ const originalExecute = async (
     const durations: number[] = [];
     const countRequests: Promise<void>[] = [];
     const resultLengths: Record<number, number> = {};
+    const results: Array<string[]> = [];
     for (let i = 0; i < count; i += 1) {
       if (PARTITION_MODE) {
         countRequests.push(
@@ -101,6 +103,11 @@ const originalExecute = async (
                     );
                   } else {
                     resultLength += rows.length;
+
+                    if (results[i] == undefined) {
+                      results[i] = [];
+                    }
+                    results[i].push(...rows.map(({ msgId }) => msgId));
                     if (
                       resultLength === limit ||
                       partitionIndex === allPartitionKeys.length - 1
@@ -135,6 +142,8 @@ const originalExecute = async (
       );
     }
 
+    verifyReadByLimit(results, +count, limit);
+
     const accumulateSum = durations.reduce((res, current) => res + current, 0);
     nTransactionAverage = accumulateSum / count;
 
@@ -149,6 +158,7 @@ const originalExecute = async (
     );
     let durations: number[] = [];
     let resultLengths: Record<number, number> = {};
+    const results: Array<number[]> = [];
     const start = performance.now();
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
@@ -254,6 +264,9 @@ const originalExecute = async (
                       })
                     );
                   } else {
+                    if (results[i] === undefined) results[i] = [];
+                    results[i].push(...rows.map(({ msgId }) => msgId));
+
                     if (i === 0) {
                       // Only update once
                       resultLength += rows.length;
@@ -261,7 +274,10 @@ const originalExecute = async (
                       resultLengths[i] += rows.length;
                     }
                     if (i === count - 1) {
-                      if (resultLength < limit && partitionIndex < length - 1) {
+                      if (
+                        resultLength < limit &&
+                        partitionIndex < allPartitionKeys.length - 1
+                      ) {
                         execute(partitionIndex + 1); // Only schedule once
                       } else stop = true;
                     }
@@ -305,6 +321,8 @@ const originalExecute = async (
 
     const end = performance.now();
     oneTransactionSum = end - start;
+
+    verifyReadByLimit(results, +count, limit);
 
     const accumulateSum = durations.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / count;

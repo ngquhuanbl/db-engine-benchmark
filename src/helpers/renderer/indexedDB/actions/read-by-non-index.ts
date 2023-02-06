@@ -6,6 +6,7 @@ import { ReadByNonIndexResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { getNonIndexConditionForIDB } from "../../../shared/non-index-conditions";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyNonIndexField } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -35,6 +36,7 @@ const originalExecute = async (
   {
     const durations: number[] = [];
     const requests: Promise<void>[] = [];
+    const results: Array<any[]> = [];
     for (let i = 0; i < count; i += 1) {
       requests.push(
         window.PARTITION_MODE
@@ -97,7 +99,7 @@ const originalExecute = async (
                 `[idb][read-by-non-index][n-transaction] ${i}`
               );
               const subRequests: Promise<void>[] = [];
-              const results: Data[] = [];
+              const subResults: Data[] = [];
               const allTableFullnames = allPartitionKeys.map(getTableFullname);
               const transaction = dbInstance.transaction(
                 allTableFullnames,
@@ -128,7 +130,7 @@ const originalExecute = async (
                       const cursor = openCursorReq.result;
                       if (cursor) {
                         const value = cursor.value;
-                        if (checkFn(value)) results.push(value);
+                        if (checkFn(value)) subResults.push(value);
                         cursor.continue();
                       } else {
                         finish();
@@ -140,22 +142,24 @@ const originalExecute = async (
               }
               return Promise.all(subRequests)
                 .then(() => {
-                  if (resultsLength === -1) resultsLength = results.length;
-                  else if (resultsLength !== results.length) {
+                  if (resultsLength === -1) resultsLength = subResults.length;
+                  else if (resultsLength !== subResults.length) {
                     console.error(
                       "[idb][read-by-non-index][n-transaction] inconsistent result length",
                       {
                         expected: resultsLength,
-                        actual: results.length,
+                        actual: subResults.length,
                       }
                     );
                   }
 
-                  if (results.length === 0) {
+                  if (subResults.length === 0) {
                     console.error(
                       "[idb][read-by-non-index][n-transaction] empty result"
                     );
                   }
+
+                  results[i] = subResults;
                 })
                 .catch((e) => {
                   throw patchDOMException(e, {
@@ -169,7 +173,7 @@ const originalExecute = async (
       );
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => verifyNonIndexField(results, +count));
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -195,6 +199,7 @@ const originalExecute = async (
 
     const durations: number[] = [];
     const requests: Promise<void>[] = [];
+    const results: Array<any[]> = [];
     for (let i = 0; i < count; i += 1) {
       requests.push(
         window.PARTITION_MODE
@@ -258,7 +263,7 @@ const originalExecute = async (
                 `[idb][read-by-non-index][one-transaction] ${i}`
               );
               const subRequests: Promise<void>[] = [];
-              const results: Data[] = [];
+              const subResults: Data[] = [];
               const getObjectStore = (partitionKey: string) => {
                 const fullname = getTableFullname(partitionKey);
                 return transaction.objectStore(fullname);
@@ -281,7 +286,7 @@ const originalExecute = async (
                       const cursor = openCursorReq.result;
                       if (cursor) {
                         const value = cursor.value;
-                        if (checkFn(value)) results.push(value);
+                        if (checkFn(value)) subResults.push(value);
                         cursor.continue();
                       } else {
                         finish();
@@ -293,22 +298,24 @@ const originalExecute = async (
               }
               return Promise.all(subRequests)
                 .then(() => {
-                  if (resultsLength === -1) resultsLength = results.length;
-                  else if (resultsLength !== results.length) {
+                  if (resultsLength === -1) resultsLength = subResults.length;
+                  else if (resultsLength !== subResults.length) {
                     console.error(
                       "[idb][read-by-non-index][one-transaction] inconsistent result length",
                       {
                         expected: resultsLength,
-                        actual: results.length,
+                        actual: subResults.length,
                       }
                     );
                   }
 
-                  if (results.length === 0) {
+                  if (subResults.length === 0) {
                     console.error(
                       "[idb][read-by-non-index][one-transaction] empty result"
                     );
                   }
+
+                  results[i] = subResults;
                 })
                 .catch((e) => {
                   throw patchDOMException(e, {
@@ -327,7 +334,9 @@ const originalExecute = async (
       );
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyNonIndexField(results, +count);
+    });
     const end = performance.now();
     oneTransactionSum = end - start;
 

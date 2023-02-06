@@ -8,6 +8,7 @@ import { ReadAllExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { DAL } from "../library";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
+import { verifyReadAll } from "../../../shared/verify-result";
 
 const originalExecute = async (
   datasetSize: number,
@@ -32,6 +33,7 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
     const durations: number[] = [];
     const countRequests: Promise<void>[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < readAllCount; i += 1) {
       if (PARTITION_MODE) {
         countRequests.push(
@@ -64,6 +66,7 @@ const originalExecute = async (
         );
       } else {
         let resultLength = 0;
+        const subResult: string[] = [];
         const partitionRequests = allPartititonKeys.map(
           (partitionKey) =>
             new Promise<void>((resolve, reject) => {
@@ -78,6 +81,7 @@ const originalExecute = async (
                   if (error) reject(error);
                   else {
                     resultLength += rows.length;
+                    subResult.push(...rows.map(({ msgId }) => msgId));
                     resolve();
                   }
                 })
@@ -96,6 +100,7 @@ const originalExecute = async (
                   }
                 );
               }
+              results.push(subResult);
             })
             .catch((e) => {
               throw patchJSError(e, {
@@ -106,7 +111,7 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(countRequests);
+    await Promise.all(countRequests).then(() => verifyReadAll(results, datasetSize, readAllCount));
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -121,6 +126,7 @@ const originalExecute = async (
   {
     const start = performance.now();
     const durations: number[] = [];
+    const results: Array<string[]> = [];
     if (PARTITION_MODE) {
       const addLogRequest = addLog(
         "[nodeIntegration-sqlite][read-all][one-transaction] read all"
@@ -132,7 +138,7 @@ const originalExecute = async (
           durations.push(end - start);
         };
         DB.getConnectionForConv(SELECTED_PARTITION_KEY).then((conn) =>
-          conn.serialize(() => {
+          conn.serialize((conn) => {
             conn.run("BEGIN TRANSACTION", (error) => {
               if (error)
                 reject(
@@ -199,7 +205,6 @@ const originalExecute = async (
               const start = performance.now();
               const finish = () => {
                 const end = performance.now();
-                console.log(`huannq`, { end, start });
                 durations.push(end - start);
               };
               DB.getConnectionForConv(partitionKey).then((conn) =>
@@ -235,6 +240,11 @@ const originalExecute = async (
                           resultLengths[i] = 0;
                         }
                         resultLengths[i] += rows.length;
+
+                        if (results[i] === undefined) {
+                          results[i] = [];
+                        }
+                        results[i].push(...rows.map(({ msgId }) => msgId));
                       }
                     });
                   }
@@ -257,7 +267,7 @@ const originalExecute = async (
               );
             })
         )
-      );
+      ).then(() => verifyReadAll(results, datasetSize, readAllCount));
 
       for (const resultLength of Object.values(resultLengths)) {
         if (resultLength !== datasetSize) {
@@ -278,7 +288,6 @@ const originalExecute = async (
 
     const accumulateSum = durations.reduce((res, current) => res + current, 0);
     oneTransactionAverage = accumulateSum / readAllCount;
-    console.log({ accumulateSum, oneTransactionAverage });
   }
   //#endregion
 

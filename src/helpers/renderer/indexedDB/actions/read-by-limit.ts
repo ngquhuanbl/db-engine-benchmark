@@ -8,6 +8,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByLimitResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadByLimit } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -37,6 +38,7 @@ const originalExecute = async (
     const logId = addLog("[idb][read-by-limit][n-transaction] read");
     const durations: number[] = [];
     const requests: Promise<void>[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < count; i += 1) {
       if (window.PARTITION_MODE) {
         requests.push(
@@ -98,6 +100,10 @@ const originalExecute = async (
                 const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
+                  if (results[i] === undefined) {
+                    results[i] = [];
+                  }
+                  results[i].push(cursor.value.msgId);
                   if (resultLength === limit) {
                     finish();
                     resolve();
@@ -126,7 +132,9 @@ const originalExecute = async (
       }
     }
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadByLimit(results, +count, limit);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -153,6 +161,7 @@ const originalExecute = async (
     });
     const durations: number[] = [];
     const requests: Promise<void>[] = [];
+    const results: Array<string[]> = [];
     for (let i = 0; i < count; i += 1) {
       requests.push(
         new Promise<void>((resolve, reject) => {
@@ -201,6 +210,8 @@ const originalExecute = async (
                 const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
+                  if (results[i] === undefined) results[i] = [];
+                  results[i].push(cursor.value.msgId);
                   if (resultLength === limit) {
                     finish();
                     resolve();
@@ -229,7 +240,9 @@ const originalExecute = async (
       );
     }
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(requests).then(() => {
+      verifyReadByLimit(results, +count, limit);
+    });
     const end = performance.now();
     oneTransactionSum = end - start;
 

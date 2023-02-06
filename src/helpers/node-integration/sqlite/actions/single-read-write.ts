@@ -9,6 +9,7 @@ import { SingleReadWriteResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadSingleItem } from "../../../shared/verify-result";
 import { addLog, removeLog } from "../../log";
 import { DAL } from "../library";
 
@@ -53,9 +54,10 @@ const originalExecute = async (
         fieldList.push(name);
         valuesPlaceholder.push(`$${name}`);
         const jsValue = jsData[name];
-
         if (type === "TEXT") {
-          params[`$${name}`] = JSON.stringify(jsValue);
+          if (typeof jsValue !== "string")
+            params[`$${name}`] = JSON.stringify(jsValue);
+          else params[`$${name}`] = jsValue;
         } else {
           params[`$${name}`] = jsValue;
         }
@@ -102,6 +104,7 @@ const originalExecute = async (
     );
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const result: string[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const params: any[] = [];
@@ -124,7 +127,7 @@ const originalExecute = async (
             durations.push(end - start);
           };
           DB.getConnectionForConv(convId).then((conn) => {
-            conn.get(query, params, (error) => {
+            conn.get(query, params, (error, row) => {
               finish();
               if (error)
                 reject(
@@ -132,7 +135,10 @@ const originalExecute = async (
                     tags: ["nodeIntegration-sqlite", "n-transaction", "read"],
                   })
                 );
-              else resolve();
+              else {
+                if (row) result.push(row.msgId);
+                resolve();
+              }
             });
           });
         })
@@ -140,6 +146,7 @@ const originalExecute = async (
     }
     await Promise.all(requests).finally(() => {
       addLogRequest.then((logId) => removeLog(logId));
+      verifyReadSingleItem(result, datasetSize);
     });
     nTransactionRead = durations.reduce(
       (result, current) => result + current,
@@ -278,6 +285,7 @@ const originalExecute = async (
     }
     const entries = Object.entries(groupByConvId);
     const durations: number[] = [];
+    const result: string[] = [];
     const requests = entries.map(
       ([convId, data]) =>
         new Promise<void>((resolve, reject) => {
@@ -313,7 +321,7 @@ const originalExecute = async (
                   TABLE_NAME
                 )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-                conn.get(query, params, (error) => {
+                conn.get(query, params, (error, row) => {
                   if (error)
                     reject(
                       patchJSError(error, {
@@ -324,6 +332,9 @@ const originalExecute = async (
                         ],
                       })
                     );
+                  else {
+                    if (row) result.push(row.msgId);
+                  }
                 });
               });
 
@@ -349,6 +360,7 @@ const originalExecute = async (
 
     await Promise.all(requests).finally(() => {
       addLogRequest.then((logId) => removeLog(logId));
+      verifyReadSingleItem(result, datasetSize);
     });
     oneTransactionRead = durations.reduce(
       (result, current) => result + current,

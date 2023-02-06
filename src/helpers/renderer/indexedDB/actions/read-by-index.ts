@@ -5,6 +5,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByIndexResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadByIndexField } from "../../../shared/verify-result";
 import { getTableFullname, openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -30,6 +31,7 @@ const originalExecute = async (
   //#region n transaction
   {
     const durations: number[] = [];
+    const resultLengths: number[] = [];
     const requests = keys.map((key, index) => {
       const logId = addLog(
         `[idb][read-by-index][n-transaction] index ${index}`
@@ -67,6 +69,7 @@ const originalExecute = async (
           };
         }).finally(() => removeLog(logId));
       } else {
+        let resultLength = 0;
         const partitionRequests: Promise<void>[] = allPartitionKeys.map(
           (partitionKey) => {
             const fullname = getTableFullname(partitionKey);
@@ -84,6 +87,9 @@ const originalExecute = async (
               const readReq = indexObj.getAll(key);
               readReq.onsuccess = function () {
                 finish();
+                if (readReq.result) {
+                  resultLength += readReq.result.length;
+                }
                 resolve();
               };
               readReq.onerror = function () {
@@ -94,6 +100,9 @@ const originalExecute = async (
           }
         );
         return Promise.all(partitionRequests)
+          .then(() => {
+            resultLengths[index] = resultLength;
+          })
           .catch((e) => {
             throw patchDOMException(e, {
               tags: ["idb", "read-by-index", "n-transaction", `index ${index}`],
@@ -105,7 +114,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() =>
+      verifyReadByIndexField(resultLengths, keys)
+    );
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -131,6 +142,7 @@ const originalExecute = async (
       return transaction.objectStore(storeName).index(INDEX_NAME);
     });
     const durations: number[] = [];
+    const resultLengths: number[] = [];
     const requests = keys.map((key, index) => {
       const logId = addLog(
         `[idb][read-by-index][one-transaction] index ${index}`
@@ -163,6 +175,7 @@ const originalExecute = async (
           };
         }).finally(() => removeLog(logId));
       } else {
+        let resultLength = 0;
         const partitionRequets: Promise<void>[] = allPartitionKeys.map(
           (partitionKey) => {
             const indexObj = getIndexObj(partitionKey);
@@ -175,6 +188,9 @@ const originalExecute = async (
               const readReq = indexObj.getAll(key);
               readReq.onsuccess = function () {
                 finish();
+                if (readReq.result) {
+                  resultLength += readReq.result.length;
+                }
                 resolve();
               };
               readReq.onerror = function () {
@@ -194,6 +210,9 @@ const originalExecute = async (
           }
         );
         return Promise.all(partitionRequets)
+          .then(() => {
+            resultLengths[index] = resultLength;
+          })
           .catch((e) => {
             throw patchDOMException(e, {
               tags: [
@@ -210,7 +229,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(requests);
+    await Promise.all(requests).then(() =>
+      verifyReadByIndexField(resultLengths, keys)
+    );
     const end = performance.now();
     oneTransactionSum = end - start;
 

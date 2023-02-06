@@ -5,6 +5,7 @@ import { ReadByRangeResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadByRange } from "../../../shared/verify-result";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -35,6 +36,7 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+    const results: Array<string[]> = [];
     const rangeRequests = ranges.map(({ from, to }, index) => {
       const params = [from, to];
       const logId = addLog(
@@ -94,6 +96,8 @@ const originalExecute = async (
                     );
                   else {
                     resultLength += rows.length;
+                    if (results[index] === undefined) results[index] = [];
+                    results[index].push(...rows.map(({ msgId }) => msgId));
                     resolve();
                   }
                   removeLog(logId);
@@ -118,7 +122,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(rangeRequests);
+    await Promise.all(rangeRequests).then(() => {
+      verifyReadByRange(results, ranges);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -134,6 +140,7 @@ const originalExecute = async (
   {
     const start = performance.now();
     let durations: number[] = [];
+    const results: Array<string[]> = [];
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
         const start = performance.now();
@@ -264,6 +271,9 @@ const originalExecute = async (
                       if (resultLengths[index] === undefined)
                         resultLengths[index] = 0;
                       resultLengths[index] += rows.length;
+
+                      if (results[index] === undefined) results[index] = [];
+                      results[index].push(...rows.map(({ msgId }) => msgId));
                     }
                     removeLog(logId);
                   });
@@ -307,6 +317,8 @@ const originalExecute = async (
     }
     const end = performance.now();
     oneTransactionSum = end - start;
+
+    verifyReadByRange(results, ranges);
 
     const accumulateSum = durations.reduce(
       (result, current) => result + current,

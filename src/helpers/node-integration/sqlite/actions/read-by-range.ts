@@ -7,6 +7,7 @@ import { ReadByRangeExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { DAL } from "../library";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
+import { verifyReadByRange } from "../../../shared/verify-result";
 
 const originalExecute = async (
   readUsingBatch: boolean,
@@ -36,6 +37,7 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+    const results: Array<string[]> = [];
     const rangeRequests = ranges.map(({ from, to }, index) => {
       const params = [from, to];
       const addLogRequest = addLog(
@@ -49,7 +51,7 @@ const originalExecute = async (
             durations.push(end - start);
           };
           DB.getConnectionForConv(SELECTED_PARTITION_KEY).then((conn) =>
-            conn.all(query, params, (error, rows) => {
+            conn.all(query, params, (error) => {
               finish();
               if (error)
                 reject(
@@ -95,6 +97,8 @@ const originalExecute = async (
                     );
                   else {
                     resultLength += rows.length;
+                    if (results[index] === undefined) results[index] = [];
+                    results[index].push(...rows.map(({ msgId }) => msgId));
                     resolve();
                   }
                   addLogRequest.then((logId) => removeLog(logId));
@@ -119,7 +123,9 @@ const originalExecute = async (
       }
     });
     const start = performance.now();
-    await Promise.all(rangeRequests);
+    await Promise.all(rangeRequests).then(() => {
+      verifyReadByRange(results, ranges);
+    });
     const end = performance.now();
     nTransactionSum = end - start;
 
@@ -135,6 +141,7 @@ const originalExecute = async (
   {
     const start = performance.now();
     let durations: number[] = [];
+    const results: Array<string[]> = [];
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
         const start = performance.now();
@@ -265,6 +272,11 @@ const originalExecute = async (
                       if (resultLengths[index] === undefined)
                         resultLengths[index] = 0;
                       resultLengths[index] += rows.length;
+
+                      if (results[index] === undefined) {
+                        results[index] = [];
+                      }
+                      results[index].push(...rows.map(({ msgId }) => msgId));
                     }
                     addLogRequest.then((logId) => removeLog(logId));
                   });
@@ -308,6 +320,8 @@ const originalExecute = async (
     }
     const end = performance.now();
     oneTransactionSum = end - start;
+
+    verifyReadByRange(results, ranges);
 
     const accumulateSum = durations.reduce(
       (result, current) => result + current,

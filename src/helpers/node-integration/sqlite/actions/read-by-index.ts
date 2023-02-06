@@ -11,6 +11,7 @@ import { ReadByIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { DAL } from "../library";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
+import { verifyReadByIndexField } from "../../../shared/verify-result";
 
 const originalExecute = async (
   readUsingBatch: boolean,
@@ -31,13 +32,14 @@ const originalExecute = async (
   //#region n transaction
   {
     let durations: number[] = [];
+    const resultLengths: number[] = [];
     const start = performance.now();
     if (PARTITION_MODE) {
       await Promise.all(
         keys.map(
           (key, index) =>
             new Promise<void>((resolve, reject) => {
-              const params: any[] = [key];
+              const params: any[] = [JSON.stringify(key)];
               const indexedKeyConditions: string[] = [];
               INDEXED_KEYS.forEach((key) => {
                 indexedKeyConditions.push(`${escapeStr(key)} =?`);
@@ -88,7 +90,7 @@ const originalExecute = async (
                 const addLogRequest = addLog(
                   `[nodeIntegration-sqlite][read-by-index][n-transaction] index ${index}`
                 );
-                const params: any[] = [key];
+                const params: any[] = [JSON.stringify(key)];
                 const indexedKeyConditions: string[] = [];
                 INDEXED_KEYS.forEach((key) => {
                   indexedKeyConditions.push(`${escapeStr(key)} =?`);
@@ -104,8 +106,9 @@ const originalExecute = async (
                   durations.push(end - start);
                 };
                 DB.getConnectionForConv(partitionKey).then((conn) =>
-                  conn.all(query, params, (error) => {
+                  conn.all(query, params, (error, rows) => {
                     finish();
+                    addLogRequest.then((logId) => removeLog(logId));
                     if (error) {
                       indexReject(
                         patchJSError(error, {
@@ -118,16 +121,23 @@ const originalExecute = async (
                         })
                       );
                     } else {
+                      if (rows) {
+                        if (resultLengths[index] === undefined) {
+                          resultLengths[index] = 0;
+                        }
+                        resultLengths[index] += rows.length;
+                      }
                       indexResolve();
                     }
-                    addLogRequest.then((logId) => removeLog(logId));
                   })
                 );
               })
           );
           return Promise.all(indexRequests);
         })
-      );
+      ).then(() => {
+        verifyReadByIndexField(resultLengths, keys);
+      });
     }
     const end = performance.now();
     nTransactionSum = end - start;
@@ -144,6 +154,7 @@ const originalExecute = async (
   {
     const durations: number[] = [];
     const start = performance.now();
+    const resultLengths: number[] = [];
     if (PARTITION_MODE) {
       await new Promise<void>((resolve, reject) => {
         const start = performance.now();
@@ -169,7 +180,7 @@ const originalExecute = async (
 
             for (let index = 0; index < numOfKeys; index += 1) {
               const key = keys[index];
-              const params: any[] = [key];
+              const params: any[] = [JSON.stringify(key)];
               const indexedKeyConditions: string[] = [];
               INDEXED_KEYS.forEach((key) => {
                 indexedKeyConditions.push(`${escapeStr(key)} =?`);
@@ -235,7 +246,7 @@ const originalExecute = async (
 
                   for (let index = 0; index < numOfKeys; index += 1) {
                     const key = keys[index];
-                    const params: any[] = [key];
+                    const params: any[] = [JSON.stringify(key)];
                     const indexedKeyConditions: string[] = [];
                     INDEXED_KEYS.forEach((key) => {
                       indexedKeyConditions.push(`${escapeStr(key)} =?`);
@@ -249,7 +260,7 @@ const originalExecute = async (
                     const addLogRequest = addLog(
                       `[nodeIntegration-sqlite][read-by-index][one-transaction] index ${index}`
                     );
-                    conn.all(query, params, (error) => {
+                    conn.all(query, params, (error, rows) => {
                       if (error) {
                         reject(
                           patchJSError(error, {
@@ -263,6 +274,13 @@ const originalExecute = async (
                         );
                       } else {
                         addLogRequest.then((logId) => removeLog(logId));
+
+                        if (rows) {
+                          if (resultLengths[index] === undefined) {
+                            resultLengths[index] = 0;
+                          }
+                          resultLengths[index] += rows.length;
+                        }
                       }
                     });
                   }
@@ -286,7 +304,9 @@ const originalExecute = async (
               );
             })
         )
-      );
+      ).then(() => {
+        verifyReadByIndexField(resultLengths, keys);
+      });
     }
     const end = performance.now();
     oneTransactionSum = end - start;

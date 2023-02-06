@@ -6,6 +6,7 @@ import { escapeStr } from "../../../shared/escape-str";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { getNonIndexConditionSQLite } from "../../../shared/non-index-conditions";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyNonIndexField } from "../../../shared/verify-result";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -33,12 +34,13 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} WHERE ${checkStatement}`;
+    const results: Array<any[]> = [];
     const start = performance.now();
     if (PARTITION_MODE) {
       const countRequests: Promise<void>[] = [];
       for (let i = 0; i < count; i += 1) {
         const logId = addLog(
-          `[nodeIntegration-sqlite][read-by-non-index][n-transaction] index ${i}`
+          `[preloaded-sqlite][read-by-non-index][n-transaction] index ${i}`
         );
         const params = [];
         countRequests.push(
@@ -55,7 +57,7 @@ const originalExecute = async (
                   reject(
                     patchJSError(error, {
                       tags: [
-                        "nodeIntegration-sqlite",
+                        "preloaded-sqlite",
                         "read-by-non-index",
                         "n-transaction",
                         `index ${i}`,
@@ -66,7 +68,7 @@ const originalExecute = async (
                   if (resultsLength === -1) resultsLength = rows.length;
                   else if (resultsLength !== rows.length) {
                     console.error(
-                      "[nodeIntegration-sqlite][read-by-non-index][n-transaction] inconsistent result length",
+                      "[preloaded-sqlite][read-by-non-index][n-transaction] inconsistent result length",
                       {
                         expected: resultsLength,
                         actual: rows.length,
@@ -75,7 +77,7 @@ const originalExecute = async (
                   }
                   if (rows.length === 0) {
                     console.error(
-                      `[nodeIntegration-sqlite][read-by-non-index][n-transaction] empty results`
+                      `[preloaded-sqlite][read-by-non-index][n-transaction] empty results`
                     );
                   }
                   resolve();
@@ -91,7 +93,7 @@ const originalExecute = async (
       let resultLengths: Record<number, number> = {};
       for (let i = 0; i < count; i += 1) {
         const logId = addLog(
-          `[nodeIntegration-sqlite][read-by-non-index][n-transaction] index ${i}`
+          `[preloaded-sqlite][read-by-non-index][n-transaction] index ${i}`
         );
         const params = [];
         const partitionRequests: Promise<void>[] = allPartitionKeys.map(
@@ -109,7 +111,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-by-non-index",
                           "n-transaction",
                           `index ${i}`,
@@ -119,6 +121,11 @@ const originalExecute = async (
                   else {
                     if (resultLengths[i] === undefined) resultLengths[i] = 0;
                     resultLengths[i] += rows.length;
+
+                    if (results[i] === undefined) {
+                      results[i] = [];
+                    }
+                    results[i].push(...rows);
                     resolve();
                   }
                   removeLog(logId);
@@ -132,7 +139,7 @@ const originalExecute = async (
       const allLengths = Object.values(resultsLength).sort();
       if (allLengths[0] !== allLengths[allLengths.length - 1]) {
         console.error(
-          "[nodeIntegration-sqlite][read-by-non-index][n-transaction] inconsistent result length",
+          "[preloaded-sqlite][read-by-non-index][n-transaction] inconsistent result length",
           {
             expected: resultsLength,
             actual: length,
@@ -141,9 +148,11 @@ const originalExecute = async (
       }
       if (allLengths[0] === 0) {
         console.error(
-          `[nodeIntegration-sqlite][read-by-non-index][n-transaction] empty results`
+          `[preloaded-sqlite][read-by-non-index][n-transaction] empty results`
         );
       }
+
+      verifyNonIndexField(results, +count);
     }
     const end = performance.now();
     nTransactionSum = end - start;
@@ -162,6 +171,7 @@ const originalExecute = async (
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} WHERE ${checkStatement}`;
+    const results: Array<any[]> = [];
     const start = performance.now();
     const params = [];
     if (PARTITION_MODE) {
@@ -172,14 +182,14 @@ const originalExecute = async (
           durations.push(end - start);
         };
         openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) => {
-          conn.serialize(() => {
+          conn.serialize((conn) => {
             conn.run("BEGIN TRANSACTION", (error) => {
               finish();
               if (error)
                 reject(
                   patchJSError(error, {
                     tags: [
-                      "nodeIntegration-sqlite",
+                      "preloaded-sqlite",
                       "read-by-non-index",
                       "1-transaction",
                       "begin-transaction",
@@ -190,14 +200,14 @@ const originalExecute = async (
 
             for (let index = 0; index < count; index += 1) {
               const logId = addLog(
-                `[nodeIntegration-sqlite][read-by-non-index][one-transaction] index ${index}`
+                `[preloaded-sqlite][read-by-non-index][one-transaction] index ${index}`
               );
               conn.all(query, params, (error) => {
                 if (error) {
                   reject(
                     patchJSError(error, {
                       tags: [
-                        "nodeIntegration-sqlite",
+                        "preloaded-sqlite",
                         "read-by-non-index",
                         "1-transaction",
                         `index ${index}`,
@@ -217,7 +227,7 @@ const originalExecute = async (
                 reject(
                   patchJSError(error, {
                     tags: [
-                      "nodeIntegration-sqlite",
+                      "preloaded-sqlite",
                       "read-by-non-index",
                       "1-transaction",
                       "commit-transaction",
@@ -240,13 +250,13 @@ const originalExecute = async (
               durations.push(end - start);
             };
             openSQLiteDatabase(partitionKey).then((conn) =>
-              conn.serialize(() => {
+              conn.serialize((conn) => {
                 conn.run("BEGIN TRANSACTION", (error) => {
                   if (error)
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-by-non-index",
                           "1-transaction",
                           "begin-transaction",
@@ -257,14 +267,14 @@ const originalExecute = async (
 
                 for (let index = 0; index < count; index += 1) {
                   const logId = addLog(
-                    `[nodeIntegration-sqlite][read-by-non-index][one-transaction] index ${index}`
+                    `[preloaded-sqlite][read-by-non-index][one-transaction] index ${index}`
                   );
                   conn.all(query, params, (error, rows) => {
                     if (error) {
                       reject(
                         patchJSError(error, {
                           tags: [
-                            "nodeIntegration-sqlite",
+                            "preloaded-sqlite",
                             "read-by-non-index",
                             "1-transaction",
                             `index ${index}`,
@@ -275,6 +285,11 @@ const originalExecute = async (
                       if (resultLengths[index] === undefined)
                         resultLengths[index] = 0;
                       resultLengths[index] += rows.length;
+
+                      if (results[index] === undefined) {
+                        results[index] = [];
+                      }
+                      results[index].push(...rows);
                     }
                     removeLog(logId);
                   });
@@ -286,7 +301,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-by-non-index",
                           "1-transaction",
                           "commit-transaction",
@@ -305,7 +320,7 @@ const originalExecute = async (
       const allLengths = Object.values(resultsLength).sort();
       if (allLengths[0] !== allLengths[allLengths.length - 1]) {
         console.error(
-          "[nodeIntegration-sqlite][read-by-non-index][one-transaction] inconsistent result length",
+          "[preloaded-sqlite][read-by-non-index][one-transaction] inconsistent result length",
           {
             expected: resultsLength,
             actual: length,
@@ -314,9 +329,11 @@ const originalExecute = async (
       }
       if (allLengths[0] === 0) {
         console.error(
-          `[nodeIntegration-sqlite][read-by-non-index][one-transaction] empty results`
+          `[preloaded-sqlite][read-by-non-index][one-transaction] empty results`
         );
       }
+
+      verifyNonIndexField(results, +count);
     }
 
     const end = performance.now();

@@ -188,4 +188,5 @@ declare global {
   };
   var PARTITION_MODE: boolean;
   var SELECTED_PARTITION_KEY: string;
+  var VERIFY_MODE_ON: boolean;
 }

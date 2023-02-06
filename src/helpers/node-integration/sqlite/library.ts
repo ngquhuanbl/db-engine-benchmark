@@ -10,6 +10,7 @@ import {
 import { NUM_READ, Z_OPEN_MODE } from "../../../constants/sqlite";
 import { getDBFilePath } from "../../shared/directory";
 import { escapeStr } from "../../shared/escape-str";
+import { getAllPossibleConvIds } from "../../shared/generate-data";
 import { patchJSError } from "../../shared/patch-error";
 import { ConnectionPool } from "./connection-pool";
 
@@ -146,10 +147,10 @@ export class DAL {
   }
 
   resetAllConvData(): Promise<void> {
-    const connections = Array.from(this.cachedConnections.values());
+    const allPartitionKeys = getAllPossibleConvIds();
     return Promise.all(
-      connections.map(
-        (conn) =>
+      allPartitionKeys.map((partitionKey) =>
+        this.getConnectionForConv(partitionKey).then((conn) => {
           new Promise<void>((resolve, reject) => {
             const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
             conn.exec(query, (error) =>
@@ -159,7 +160,8 @@ export class DAL {
                   )
                 : resolve()
             );
-          })
+          });
+        })
       )
     ).then(() => {});
   }

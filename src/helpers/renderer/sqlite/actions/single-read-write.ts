@@ -9,6 +9,7 @@ import { SingleReadWriteResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadSingleItem } from "../../../shared/verify-result";
 import { openSQLiteDatabase, resetSQLiteData } from "../common";
 
 const originalExecute = async (
@@ -52,7 +53,9 @@ const originalExecute = async (
         const jsValue = jsData[name];
 
         if (type === "TEXT") {
-          params[`$${name}`] = JSON.stringify(jsValue);
+          if (typeof jsValue !== "string")
+            params[`$${name}`] = JSON.stringify(jsValue);
+          else params[`$${name}`] = jsValue;
         } else {
           params[`$${name}`] = jsValue;
         }
@@ -101,6 +104,7 @@ const originalExecute = async (
     );
     const requests: Promise<void>[] = [];
     const durations: number[] = [];
+    const result: string[] = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const convId = jsData.toUid;
@@ -108,7 +112,7 @@ const originalExecute = async (
       const primaryKeyConditions: string[] = [];
       PRIMARY_KEYS.forEach((key) => {
         primaryKeyConditions.push(`${escapeStr(key)}=?`);
-        params.push(jsData[key]);
+        params.push(JSON.stringify(jsData[key]));
       });
 
       const query = `SELECT * FROM ${escapeStr(
@@ -123,7 +127,7 @@ const originalExecute = async (
             durations.push(end - start);
           };
           openSQLiteDatabase(convId).then((conn) => {
-            conn.get(query, params, (error) => {
+            conn.get(query, params, (error, row) => {
               finish();
               if (error)
                 reject(
@@ -131,7 +135,10 @@ const originalExecute = async (
                     tags: ["preload-sqlite", "n-transaction", "read"],
                   })
                 );
-              else resolve();
+              else {
+                if (row) result.push(JSON.parse(row.msgId));
+                resolve();
+              }
             });
           });
         })
@@ -139,6 +146,7 @@ const originalExecute = async (
     }
     await Promise.all(requests).finally(() => {
       removeLog(logId);
+      verifyReadSingleItem(result, datasetSize);
     });
     nTransactionRead = durations.reduce(
       (result, current) => result + current,
@@ -272,6 +280,7 @@ const originalExecute = async (
     }
     const entries = Object.entries(groupByConvId);
     const durations: number[] = [];
+    const result: string[] = [];
     const requests = entries.map(
       ([convId, data]) =>
         new Promise<void>((resolve, reject) => {
@@ -300,20 +309,23 @@ const originalExecute = async (
                 const primaryKeyConditions: string[] = [];
                 PRIMARY_KEYS.forEach((key) => {
                   primaryKeyConditions.push(`${escapeStr(key)}=?`);
-                  params.push(jsData[key]);
+                  params.push(JSON.stringify(jsData[key]));
                 });
 
                 const query = `SELECT * FROM ${escapeStr(
                   TABLE_NAME
                 )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-                conn.get(query, params, (error) => {
+                conn.get(query, params, (error, row) => {
                   if (error)
                     reject(
                       patchJSError(error, {
                         tags: ["preloaded-sqlite", "1-transaction", "read"],
                       })
                     );
+                  else {
+                    if (row) result.push(JSON.parse(row.msgId));
+                  }
                 });
               });
 
@@ -339,6 +351,7 @@ const originalExecute = async (
 
     await Promise.all(requests).finally(() => {
       removeLog(logId);
+      verifyReadSingleItem(result, datasetSize);
     });
     oneTransactionRead = durations.reduce(
       (result, current) => result + current,
