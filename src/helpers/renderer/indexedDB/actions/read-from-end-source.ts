@@ -1,14 +1,11 @@
-import { count } from "console";
-import memoize from "fast-memoize";
-import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../constants/dataset";
-
-import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
-import { averageFnResults } from "../../../../types/shared/average-objects";
-import { ReadFromEndSourceResult } from "../../../../types/shared/result";
-import { getAllPossibleConvIds } from "../../../shared/generate-data";
-import { patchDOMException } from "../../../shared/patch-error";
-import { verifyReadFromEndSource } from "../../../shared/verify-result";
-import { getTableFullname, openIndexedDBDatabase } from "../common";
+import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from '../../../../constants/dataset';
+import { ReadFromEndSourceExtraData } from '../../../../types/shared/action';
+import { averageFnResults } from '../../../../types/shared/average-objects';
+import { ReadFromEndSourceResult } from '../../../../types/shared/result';
+import { getAllPossibleConvIds } from '../../../shared/generate-data';
+import { patchDOMException } from '../../../shared/patch-error';
+import { verifyReadFromEndSource } from '../../../shared/verify-result';
+import { getTableFullname, openIndexedDBDatabase } from '../common';
 
 const originalExecute = async (
   datasetSize: number,
@@ -36,111 +33,64 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog("[idb][read-from-end-source][n-transaction] read");
-    const requests: Promise<void>[] = [];
-    const durations: number[] = [];
-    const results: Array<string[]> = [];
+
+    const requestsData: Array<{ fullnames: string[] }> = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       if (PARTITION_MODE) {
-        requests.push(
-          new Promise<void>((resolve, reject) => {
-            const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-            const transaction = dbInstance.transaction(fullname, "readonly", {
-              durability,
-            });
-            const objectStore = transaction.objectStore(fullname);
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.openCursor(undefined, "prev");
-            const result = [];
-            readReq.onsuccess = function () {
-              const cursor = readReq.result;
-              if (cursor) {
-                result.push(cursor.value);
-                cursor.continue();
-              } else {
-                finish();
-                resolve();
-              }
-            };
-            readReq.onerror = function () {
-              finish();
-              reject(
-                patchDOMException(readReq.error!, {
-                  tags: ["idb", "read-from-end-source", "n-transaction"],
-                })
-              );
-            };
-          })
-        );
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
       } else {
-        const transaction = dbInstance.transaction(allTableFullnames);
-        const getObjectStore = (partitionKey: string) => {
-          const fullname = getTableFullname(partitionKey);
-          return transaction.objectStore(fullname);
-        };
-
-        let resultLength = 0;
-        const request = Promise.all(
-          allPartitionKeys.map((paritionKey) => {
-            const objectStore = getObjectStore(paritionKey);
-            return new Promise<void>((resolve, reject) => {
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const readReq = objectStore.openCursor(undefined, "prev");
-              readReq.onsuccess = function () {
-                const cursor = readReq.result;
-                if (cursor) {
-                  resultLength += 1;
-                  if (results[i] == undefined) results[i] = [];
-                  results[i].push(cursor.value.msgId);
-                  cursor.continue();
-                } else {
-                  finish();
-                  resolve();
-                }
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(readReq.error);
-              };
-            });
-          })
-        )
-          .then(() => {
-            if (resultLength !== datasetSize) {
-              console.error(
-                "[idb][read-from-end-source][n-transaction] insufficient full traverse",
-                {
-                  resultLength,
-                  datasetSize,
-                }
-              );
-            }
-          })
-          .catch((e) => {
-            throw patchDOMException(e!, {
-              tags: ["idb", "read-from-end-source", "n-transaction"],
-            });
-          });
-
-        requests.push(request);
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
       }
     }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
-    });
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const transaction = dbInstance.transaction(
+                  fullname,
+                  "readonly",
+                  {
+                    durability,
+                  }
+                );
+                const objectStore = transaction.objectStore(fullname);
+                const readReq = objectStore.openCursor(undefined, "prev");
+                readReq.onsuccess = function () {
+                  const cursor = readReq.result;
+                  if (cursor) {
+                    if (checksumData[countIndex] === undefined)
+                      checksumData[countIndex] = [];
+                    checksumData[countIndex].push(cursor.value);
+                    cursor.continue();
+                  } else {
+                    resolve();
+                  }
+                };
+                readReq.onerror = function () {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-from-end-source", "n-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readFromEndSourceCount;
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readFromEndSourceCount;
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
 
     removeLog(logId);
   }
@@ -152,113 +102,57 @@ const originalExecute = async (
     const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
       durability,
     });
-    const getObjectStore = memoize((partitionKey) => {
-      const fullname = getTableFullname(partitionKey);
-      return transaction.objectStore(fullname);
-    });
-    const requests: Promise<void>[] = [];
-    const durations: number[] = [];
-    const results: Array<string[]> = [];
+
+    const requestsData: Array<{ fullnames: string[] }> = [];
     for (let i = 0; i < readFromEndSourceCount; i += 1) {
       if (PARTITION_MODE) {
-        requests.push(
-          new Promise<void>((resolve, reject) => {
-            const objectStore = getObjectStore(SELECTED_PARTITION_KEY);
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.openCursor(undefined, "prev");
-            readReq.onsuccess = function () {
-              const cursor = readReq.result;
-              if (cursor) {
-                cursor.continue();
-              } else {
-                // const resultLength = result.length;
-                // if (resultLength !== datasetSize) {
-                //   console.error(
-                //     "[idb][read-from-end-source][one-transaction] insufficient full traverse",
-                //     {
-                //       resultLength,
-                //       datasetSize,
-                //     }
-                //   );
-                // }
-                finish();
-                resolve();
-              }
-            };
-            readReq.onerror = function () {
-              finish();
-              reject(
-                patchDOMException(readReq.error!, {
-                  tags: ["idb", "read-from-end-source", "one-transaction"],
-                })
-              );
-            };
-          })
-        );
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
       } else {
-        let resultLength = 0;
-        const request = Promise.all(
-          allPartitionKeys.map((paritionKey) => {
-            const objectStore = getObjectStore(paritionKey);
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.openCursor(undefined, "prev");
-            return new Promise<void>((resolve, reject) => {
-              readReq.onsuccess = function () {
-                const cursor = readReq.result;
-                if (cursor) {
-                  resultLength += 1;
-                  if (results[i] === undefined) results[i] = [];
-                  results[i].push(cursor.value.msgId);
-                  cursor.continue();
-                } else {
-                  finish();
-                  resolve();
-                }
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(readReq.error);
-              };
-            });
-          })
-        )
-          .then(() => {
-            if (resultLength !== datasetSize) {
-              console.error(
-                "[idb][read-from-end-source][one-transaction] insufficient full traverse",
-                {
-                  resultLength,
-                  datasetSize,
-                }
-              );
-            }
-          })
-          .catch((e) => {
-            throw patchDOMException(e!, {
-              tags: ["idb", "read-from-end-source", "one-transaction"],
-            });
-          });
-
-        requests.push(request);
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
       }
     }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount);
-    });
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const objectStore = transaction.objectStore(fullname);
+                const readReq = objectStore.openCursor(undefined, "prev");
+                readReq.onsuccess = function () {
+                  const cursor = readReq.result;
+                  if (cursor) {
+                    if (checksumData[countIndex] === undefined)
+                      checksumData[countIndex] = [];
+                    checksumData[countIndex].push(cursor.value);
+                    cursor.continue();
+                  } else {
+                    resolve();
+                  }
+                };
+                readReq.onerror = function () {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-from-end-source", "one-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / readFromEndSourceCount;
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readFromEndSourceCount;
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
 
     removeLog(logId);
   }

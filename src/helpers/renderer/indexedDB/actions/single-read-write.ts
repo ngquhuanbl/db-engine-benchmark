@@ -1,4 +1,3 @@
-import memoize from "fast-memoize";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
 import {
@@ -6,7 +5,6 @@ import {
   getConvId,
   getData,
 } from "../../../shared/generate-data";
-// import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
 import { verifyReadSingleItem } from "../../../shared/verify-result";
 import {
@@ -24,10 +22,7 @@ const originalExecute = async (
   removeLog: (id: number) => void
 ): Promise<SingleReadWriteResult> => {
   const dbInstance = await openIndexedDBDatabase();
-
-  //   const dataLoader = DataLoaderImpl.getInstance();
-  //   const data = await dataLoader.getDataset(datasetSize);
-
+  
   const durability = relaxedDurability ? "relaxed" : "default";
 
   async function resetData() {
@@ -46,96 +41,89 @@ const originalExecute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][n-transaction] write");
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
 
+    const requestsData: Array<{ fullname: string; item: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = getConvId(i);
       const fullname = getTableFullname(partitionKey);
-      const transaction = dbInstance.transaction(fullname, "readwrite", {
-        durability,
-      });
-      const objectStore = transaction.objectStore(fullname);
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const writeReq = objectStore.add(item);
-          writeReq.onsuccess = function () {
-            finish();
-            resolve();
-          };
-          writeReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(writeReq.error!, {
-                tags: ["idb", "single-read-write", "n-transaction", "write"],
-              })
-            );
-          };
-        })
-      );
+      requestsData.push({ fullname, item });
     }
-    await Promise.all(requests).finally(() => {
-      removeLog(logId);
-    });
-    nTransactionWrite = durations.reduce(
-      (result, current) => current + result,
-      0
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ fullname, item }) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(fullname, "readwrite", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(fullname);
+            const writeReq = objectStore.add(item);
+            writeReq.onsuccess = function () {
+              resolve();
+            };
+            writeReq.onerror = function () {
+              reject(
+                patchDOMException(writeReq.error!, {
+                  tags: ["idb", "single-read-write", "n-transaction", "write"],
+                })
+              );
+            };
+          })
+      )
     );
+    const end = performance.now();
+    nTransactionWrite = end - start;
+
+    removeLog(logId);
   }
 
   // READ
   {
     const logId = addLog("[idb][single-read-write][n-transaction] read");
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
-    const result: string[] = [];
+
+    const requestsData: Array<{ fullname: string; item: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
       const fullname = getTableFullname(partitionKey);
-      const transaction = dbInstance.transaction(fullname, "readwrite", {
-        durability,
-      });
-      const objectStore = transaction.objectStore(fullname);
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const readReq = objectStore.get(item.msgId);
-          readReq.onsuccess = function () {
-            finish();
-            const entry = readReq.result;
-            result.push(entry.msgId);
-            resolve();
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: ["idb", "single-read-write", "n-transaction", "read"],
-              })
-            );
-          };
-        })
-      );
+      requestsData.push({ fullname, item });
     }
-    await Promise.all(requests).finally(() => {
-      removeLog(logId);
-      verifyReadSingleItem(result, datasetSize);
-    });
-    nTransactionRead = durations.reduce(
-      (result, current) => current + result,
-      0
+
+    const checksumData: string[] = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ fullname, item }) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(fullname, "readwrite", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(fullname);
+
+            const readReq = objectStore.get(item.msgId);
+            readReq.onsuccess = function () {
+              const entry = readReq.result;
+              checksumData.push(entry.msgId);
+              resolve();
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "single-read-write", "n-transaction", "read"],
+                })
+              );
+            };
+          })
+      )
     );
+    const end = performance.now();
+    nTransactionRead = end - start;
+
+    removeLog(logId);
+    verifyReadSingleItem(checksumData, datasetSize);
   }
   //#endregion
 
@@ -153,46 +141,42 @@ const originalExecute = async (
     const transaction = dbInstance.transaction(allFullnames, "readwrite", {
       durability,
     });
-    const getObjectStore = memoize((partitionKey: string) => {
-      const storeName = getTableFullname(partitionKey);
-      return transaction.objectStore(storeName);
-    });
-    const requests: Promise<void>[] = [];
-    const durations: number[] = [];
+
+    const requestsData: Array<{ fullname: string; item: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
-      const objectStore = getObjectStore(partitionKey);
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const writeReq = objectStore.add(item);
-          writeReq.onsuccess = function () {
-            finish();
-            resolve();
-          };
-          writeReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(writeReq.error!, {
-                tags: ["idb", "single-read-write", "n-transaction", "write"],
-              })
-            );
-          };
-        })
-      );
+      const fullname = getTableFullname(partitionKey);
+      requestsData.push({
+        item,
+        fullname,
+      });
     }
-    await Promise.all(requests).finally(() => {
-      removeLog(logId);
-    });
-    oneTransactionWrite = durations.reduce(
-      (result, current) => result + current,
-      0
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ item, fullname }) =>
+          new Promise<void>((resolve, reject) => {
+            const objectStore = transaction.objectStore(fullname);
+            const writeReq = objectStore.add(item);
+            writeReq.onsuccess = function () {
+              resolve();
+            };
+            writeReq.onerror = function () {
+              reject(
+                patchDOMException(writeReq.error!, {
+                  tags: ["idb", "single-read-write", "n-transaction", "write"],
+                })
+              );
+            };
+          })
+      )
     );
+    const end = performance.now();
+    oneTransactionWrite = end - start;
+
+    removeLog(logId);
   }
   // READ
   {
@@ -202,50 +186,46 @@ const originalExecute = async (
     const transaction = dbInstance.transaction(allFullnames, "readwrite", {
       durability,
     });
-    const getObjectStore = memoize((partitionKey: string) => {
-      const storeName = getTableFullname(partitionKey);
-      return transaction.objectStore(storeName);
-    });
-    const requests: Promise<void>[] = [];
-    const durations: number[] = [];
-	const result: string[] = [];
+
+    const requestsData: Array<{ fullname: string; key: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const partitionKey = item.toUid;
-      const objectStore = getObjectStore(partitionKey);
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const readReq = objectStore.get(item.msgId);
-          readReq.onsuccess = function () {
-            finish();
-			const entry = readReq.result;
-			result.push(entry.msgId);
-            resolve();
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: ["idb", "single-read-write", "n-transaction", "read"],
-              })
-            );
-          };
-        })
-      );
+      const fullname = getTableFullname(partitionKey);
+      requestsData.push({
+        fullname,
+        key: item.msgId,
+      });
     }
-    await Promise.all(requests).finally(() => {
-      removeLog(logId);
-	  verifyReadSingleItem(result, datasetSize)
-    });
-    oneTransactionRead = durations.reduce(
-      (result, current) => result + current,
-      0
+
+    const checksumData: string[] = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ fullname, key }) =>
+          new Promise<void>((resolve, reject) => {
+            const objectStore = transaction.objectStore(fullname);
+            const readReq = objectStore.get(key);
+            readReq.onsuccess = function () {
+              const entry = readReq.result;
+              checksumData.push(entry.msgId);
+              resolve();
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "single-read-write", "n-transaction", "read"],
+                })
+              );
+            };
+          })
+      )
     );
+    const end = performance.now();
+    oneTransactionRead = end - start;
+
+    removeLog(logId);
   }
 
   //#endregion

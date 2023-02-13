@@ -1,7 +1,5 @@
-import memoize from "fast-memoize";
 import { ReadByNonIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
-import { Data } from "../../../../types/shared/data";
 import { ReadByNonIndexResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { getNonIndexConditionForIDB } from "../../../shared/non-index-conditions";
@@ -34,317 +32,130 @@ const originalExecute = async (
 
   //#region n transaction
   {
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
-    const results: Array<any[]> = [];
+    const logId = addLog(`[idb][read-by-non-index][n-transaction] read`);
+
+    const requestsData: Array<{ fullnames: string[] }> = [];
     for (let i = 0; i < count; i += 1) {
-      requests.push(
-        window.PARTITION_MODE
-          ? new Promise<void>((resolve, reject) => {
-              const logId = addLog(
-                `[idb][read-by-non-index][n-transaction] ${i}`
-              );
-              const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
-              const transaction = dbInstance.transaction(fullname, "readonly", {
-                durability,
-              });
-              const objectStore = transaction.objectStore(fullname);
-              const results: Data[] = [];
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const openCursorReq = objectStore.openCursor();
-              openCursorReq.onerror = function () {
-                finish();
-                reject(
-                  patchDOMException(openCursorReq.error!, {
-                    tags: ["idb", "read-by-non-index", "n-transaction", `${i}`],
-                  })
-                );
-                removeLog(logId);
-              };
-              openCursorReq.onsuccess = function () {
-                const cursor = openCursorReq.result;
-                if (cursor) {
-                  const value = cursor.value;
-                  if (checkFn(value)) results.push(value);
-                  cursor.continue();
-                } else {
-                  finish();
-                  resolve();
-                  if (resultsLength === -1) resultsLength = results.length;
-                  else if (resultsLength !== results.length) {
-                    console.error(
-                      "[idb][read-by-non-index][n-transaction] inconsistent result length",
-                      {
-                        expected: resultsLength,
-                        actual: results.length,
-                      }
-                    );
-                  }
-
-                  if (results.length === 0) {
-                    console.error(
-                      "[idb][read-by-non-index][n-transaction] empty result"
-                    );
-                  }
-                  removeLog(logId);
-                }
-              };
-            })
-          : (() => {
-              const logId = addLog(
-                `[idb][read-by-non-index][n-transaction] ${i}`
-              );
-              const subRequests: Promise<void>[] = [];
-              const subResults: Data[] = [];
-              const allTableFullnames = allPartitionKeys.map(getTableFullname);
-              const transaction = dbInstance.transaction(
-                allTableFullnames,
-                "readonly",
-                {
-                  durability,
-                }
-              );
-              const getObjectStore = (partitionKey: string) => {
-                const fullname = getTableFullname(partitionKey);
-                return transaction.objectStore(fullname);
-              };
-              for (const partitionKey of allPartitionKeys) {
-                const objectStore = getObjectStore(partitionKey);
-                subRequests.push(
-                  new Promise<void>((resolve, reject) => {
-                    const start = performance.now();
-                    const finish = () => {
-                      const end = performance.now();
-                      durations.push(end - start);
-                    };
-                    const openCursorReq = objectStore.openCursor();
-                    openCursorReq.onerror = function () {
-                      finish();
-                      reject(openCursorReq.error!);
-                    };
-                    openCursorReq.onsuccess = function () {
-                      const cursor = openCursorReq.result;
-                      if (cursor) {
-                        const value = cursor.value;
-                        if (checkFn(value)) subResults.push(value);
-                        cursor.continue();
-                      } else {
-                        finish();
-                        resolve();
-                      }
-                    };
-                  })
-                );
-              }
-              return Promise.all(subRequests)
-                .then(() => {
-                  if (resultsLength === -1) resultsLength = subResults.length;
-                  else if (resultsLength !== subResults.length) {
-                    console.error(
-                      "[idb][read-by-non-index][n-transaction] inconsistent result length",
-                      {
-                        expected: resultsLength,
-                        actual: subResults.length,
-                      }
-                    );
-                  }
-
-                  if (subResults.length === 0) {
-                    console.error(
-                      "[idb][read-by-non-index][n-transaction] empty result"
-                    );
-                  }
-
-                  results[i] = subResults;
-                })
-                .catch((e) => {
-                  throw patchDOMException(e, {
-                    tags: ["idb", "read-by-non-index", "n-transaction", `${i}`],
-                  });
-                })
-                .finally(() => {
-                  removeLog(logId);
-                });
-            })()
-      );
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
+      } else {
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
+      }
     }
+
+    const checksumData: Array<any[]> = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() => verifyNonIndexField(results, +count));
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const transaction = dbInstance.transaction(
+                  fullname,
+                  "readonly",
+                  { durability }
+                );
+                const objectStore = transaction.objectStore(fullname);
+                const openCursorReq = objectStore.openCursor();
+                openCursorReq.onsuccess = () => {
+                  const cursor = openCursorReq.result;
+                  if (cursor) {
+                    const value = cursor.value;
+                    if (checkFn(value)) {
+                      if (checksumData[countIndex] === undefined)
+                        checksumData[countIndex] = [];
+                      checksumData[countIndex].push(value);
+                    }
+                    cursor.continue();
+                  } else resolve();
+                };
+                openCursorReq.onerror = () => {
+                  reject(openCursorReq.error);
+                };
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
-    );
-    nTransactionAverage = accumulateSum / count;
+    nTransactionAverage = nTransactionSum / count;
+
+    verifyNonIndexField(checksumData, +count);
+
+    removeLog(logId);
   }
   //#endregion
 
   //#region one transaction
   {
-    const allTableFullnames = allPartitionKeys.map(getTableFullname);
+    const logId = addLog(`[idb][read-by-non-index][one-transaction] read`);
 
+    const requestsData: Array<{ fullnames: string[] }> = [];
+    for (let i = 0; i < count; i += 1) {
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
+      } else {
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
+      }
+    }
+
+    const checksumData: Array<any[]> = [];
+
+    const allTableFullnames = allPartitionKeys.map(getTableFullname);
     const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
       durability,
     });
-    const getObjectStore = memoize((partitionKey: string) => {
-      const storeName = getTableFullname(partitionKey);
-      return transaction.objectStore(storeName);
-    });
 
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
-    const results: Array<any[]> = [];
-    for (let i = 0; i < count; i += 1) {
-      requests.push(
-        window.PARTITION_MODE
-          ? new Promise<void>((resolve, reject) => {
-              const logId = addLog(
-                `[idb][read-by-non-index][one-transaction] ${i}`
-              );
-              const objectStore = getObjectStore(window.SELECTED_PARTITION_KEY);
-              const results: Data[] = [];
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const openCursorReq = objectStore.openCursor();
-              openCursorReq.onerror = function () {
-                finish();
-                reject(
-                  patchDOMException(openCursorReq.error!, {
-                    tags: [
-                      "idb",
-                      "read-by-non-index",
-                      "one-transaction",
-                      `${i}`,
-                    ],
-                  })
-                );
-                removeLog(logId);
-              };
-              openCursorReq.onsuccess = function () {
-                const cursor = openCursorReq.result;
-                if (cursor) {
-                  const value = cursor.value;
-                  if (checkFn(value)) results.push(value);
-                  cursor.continue();
-                } else {
-                  finish();
-                  resolve();
-                  if (resultsLength === -1) resultsLength = results.length;
-                  else if (resultsLength !== results.length) {
-                    console.error(
-                      "[idb][read-by-non-index][one-transaction] inconsistent result length",
-                      {
-                        expected: resultsLength,
-                        actual: results.length,
-                      }
-                    );
-                  }
-
-                  if (results.length === 0) {
-                    console.error(
-                      "[idb][read-by-non-index][one-transaction] empty result"
-                    );
-                  }
-                  removeLog(logId);
-                }
-              };
-            })
-          : (() => {
-              const logId = addLog(
-                `[idb][read-by-non-index][one-transaction] ${i}`
-              );
-              const subRequests: Promise<void>[] = [];
-              const subResults: Data[] = [];
-              const getObjectStore = (partitionKey: string) => {
-                const fullname = getTableFullname(partitionKey);
-                return transaction.objectStore(fullname);
-              };
-              for (const partitionKey of allPartitionKeys) {
-                const objectStore = getObjectStore(partitionKey);
-                subRequests.push(
-                  new Promise<void>((resolve, reject) => {
-                    const start = performance.now();
-                    const finish = () => {
-                      const end = performance.now();
-                      durations.push(end - start);
-                    };
-                    const openCursorReq = objectStore.openCursor();
-                    openCursorReq.onerror = function () {
-                      finish();
-                      reject(openCursorReq.error!);
-                    };
-                    openCursorReq.onsuccess = function () {
-                      const cursor = openCursorReq.result;
-                      if (cursor) {
-                        const value = cursor.value;
-                        if (checkFn(value)) subResults.push(value);
-                        cursor.continue();
-                      } else {
-                        finish();
-                        resolve();
-                      }
-                    };
-                  })
-                );
-              }
-              return Promise.all(subRequests)
-                .then(() => {
-                  if (resultsLength === -1) resultsLength = subResults.length;
-                  else if (resultsLength !== subResults.length) {
-                    console.error(
-                      "[idb][read-by-non-index][one-transaction] inconsistent result length",
-                      {
-                        expected: resultsLength,
-                        actual: subResults.length,
-                      }
-                    );
-                  }
-
-                  if (subResults.length === 0) {
-                    console.error(
-                      "[idb][read-by-non-index][one-transaction] empty result"
-                    );
-                  }
-
-                  results[i] = subResults;
-                })
-                .catch((e) => {
-                  throw patchDOMException(e, {
-                    tags: [
-                      "idb",
-                      "read-by-non-index",
-                      "one-transaction",
-                      `${i}`,
-                    ],
-                  });
-                })
-                .finally(() => {
-                  removeLog(logId);
-                });
-            })()
-      );
-    }
     const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyNonIndexField(results, +count);
-    });
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const objectStore = transaction.objectStore(fullname);
+                const openCursorReq = objectStore.openCursor();
+                openCursorReq.onerror = function () {
+                  reject(
+                    patchDOMException(openCursorReq.error!, {
+                      tags: ["idb", "read-by-non-index", "one-transaction"],
+                    })
+                  );
+                };
+                openCursorReq.onsuccess = function () {
+                  const cursor = openCursorReq.result;
+                  if (cursor) {
+                    const value = cursor.value;
+                    if (checkFn(value)) {
+                      if (checksumData[countIndex] === undefined)
+                        checksumData[countIndex] = [];
+                      checksumData[countIndex].push(value);
+                    }
+                    cursor.continue();
+                  } else {
+                    resolve();
+                  }
+                };
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / count;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
-    );
-    oneTransactionAverage = accumulateSum / count;
+    verifyNonIndexField(checksumData, +count);
+
+    removeLog(logId);
   }
   //#endregion
 

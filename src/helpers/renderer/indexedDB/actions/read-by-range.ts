@@ -1,6 +1,6 @@
-import memoize from "fast-memoize";
 import { ReadByRangeExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
+import { IDBRange } from "../../../../types/shared/indexedDB";
 import { ReadByRangeResult } from "../../../../types/shared/result";
 import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
@@ -28,276 +28,136 @@ const originalExecute = async (
 
   //#region n transaction
   {
-    const durations: number[] = [];
-    const results: Array<string[]> = [];
-    const requests = ranges.map(({ from, to }, index) => {
+    const logId = addLog(`[idb][read-by-range][n-transaction] read`);
+
+    const requestsData: Array<{
+      fullnames: string[];
+      range: IDBRange<string>;
+    }> = [];
+    for (const range of ranges) {
       if (PARTITION_MODE) {
-        return new Promise<void>((resolve, reject) => {
-          const logId = addLog(
-            `[idb][read-by-range][n-transaction] range ${index}`
-          );
-          const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-          const transaction = dbInstance.transaction(fullname, "readonly", {
-            durability,
-          });
-          const objectStore = transaction.objectStore(fullname);
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
-          readReq.onsuccess = function () {
-            // const result = readReq.result;
-            // const resultLength = result.length;
-            // const size = +to - +from + 1;
-            // if (size !== resultLength) {
-            //   console.error(
-            //     `[idb][read-by-range][n-transaction] range ${index} - unmatched checksum`,
-            //     {
-            //       from,
-            //       to,
-            //       resultLength,
-            //       size,
-            //     }
-            //   );
-            // }
-            finish();
-            resolve();
-            removeLog(logId);
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: [
-                  "idb",
-                  "read-by-range",
-                  "n-transaction",
-                  `range ${index}`,
-                ],
-              })
-            );
-            removeLog(logId);
-          };
-        });
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname], range });
       } else {
-        const logId = addLog(
-          `[idb][read-by-range][n-transaction] range ${index}`
-        );
-        const allTableFullnames = allPartitionKeys.map(getTableFullname);
-        const transaction = dbInstance.transaction(
-          allTableFullnames,
-          "readonly",
-          {
-            durability,
-          }
-        );
-        const getObjectStore = memoize((paritionKey) => {
-          const fullnamme = getTableFullname(paritionKey);
-          return transaction.objectStore(fullnamme);
-        });
-
-        let resultLength = 0;
-        return Promise.all(
-          allPartitionKeys.map((partitionKey) => {
-            const objectStore = getObjectStore(partitionKey);
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
-            return new Promise<void>((resolve, reject) => {
-              readReq.onsuccess = function () {
-                finish();
-                resultLength += readReq.result.length;
-
-                if (results[index] === undefined) results[index] = [];
-                results[index].push(
-                  ...readReq.result.map(({ msgId }) => msgId)
-                );
-                resolve();
-              };
-              readReq.onerror = function (e) {
-                finish();
-                reject(e);
-              };
-            });
-          })
-        )
-          .then(() => {
-            const size = +to - +from + 1;
-            if (size !== resultLength) {
-              console.error(
-                `[idb][read-by-range][n-transaction] range ${index} - unmatched checksum`,
-                {
-                  from,
-                  to,
-                  resultLength,
-                  size,
-                }
-              );
-            }
-          })
-          .catch((e) => {
-            throw patchDOMException(e, {
-              tags: ["idb", "read-by-range", "n-transaction", `range ${index}`],
-            });
-          })
-          .finally(() => {
-            removeLog(logId);
-          });
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames, range });
       }
-    });
+    }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadByRange(results, ranges);
-    });
+    await Promise.all(
+      requestsData.map(({ fullnames, range }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const { from, to } = range;
+                const transaction = dbInstance.transaction(
+                  fullname,
+                  "readonly",
+                  {
+                    durability,
+                  }
+                );
+                const objectStore = transaction.objectStore(fullname);
+                const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
+                readReq.onsuccess = () => {
+                  if (checksumData[countIndex] === undefined) {
+                    checksumData[countIndex] = [];
+                  }
+                  checksumData.push(
+                    ...readReq.result.map(({ msgId }) => msgId)
+                  );
+                  resolve();
+                };
+                readReq.onerror = () => {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-by-range", "n-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / numOfRanges;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
-    );
-    nTransactionAverage = accumulateSum / numOfRanges;
+    verifyReadByRange(checksumData, ranges);
+
+    removeLog(logId);
   }
   //#endregion
 
   //#region one transaction
   {
+    const logId = addLog(`[idb][read-by-range][one-transaction] read`);
+
+    const requestsData: Array<{
+      fullnames: string[];
+      range: IDBRange<string>;
+    }> = [];
+    for (const range of ranges) {
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname], range });
+      } else {
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames, range });
+      }
+    }
+
+    const checksumData: Array<string[]> = [];
+
     const allTableFullnames = allPartitionKeys.map(getTableFullname);
     const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
       durability,
     });
-    const getObjectStore = (paritionKey: string) => {
-      const fullname = getTableFullname(paritionKey);
-      return transaction.objectStore(fullname);
-    };
-    const durations: number[] = [];
-    const results: Array<string[]> = [];
-    const requests = ranges.map(({ from, to }, index) => {
-      if (PARTITION_MODE) {
-        const logId = addLog(
-          `[idb][read-by-range][one-transaction] range ${index}`
-        );
-        return new Promise<void>((resolve, reject) => {
-          const objectStore = getObjectStore(SELECTED_PARTITION_KEY);
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
-          readReq.onsuccess = function () {
-            // const result = readReq.result;
-            // const resultLength = result.length;
-            // const size = +to - +from + 1;
-            // if (size !== resultLength) {
-            //   console.error(
-            //     `[idb][read-by-range][one-transaction] range ${index} - unmatched checksum`,
-            //     {
-            //       from,
-            //       to,
-            //       resultLength,
-            //       size,
-            //     }
-            //   );
-            // }
-            finish();
-            resolve();
-            removeLog(logId);
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: [
-                  "idb",
-                  "read-by-range",
-                  "one-transaction",
-                  `range ${index}`,
-                ],
-              })
-            );
-            removeLog(logId);
-          };
-        });
-      } else {
-        const logId = addLog(
-          `[idb][read-by-range][one-transaction] range ${index}`
-        );
-        let resultLength = 0;
-        return Promise.all(
-          allPartitionKeys.map((partitionKey) => {
-            const objectStore = getObjectStore(partitionKey);
-            return new Promise<void>((resolve, reject) => {
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
-              readReq.onsuccess = function () {
-                finish();
-                resultLength += readReq.result.length;
-                if (results[index] === undefined) results[index] = [];
-                results[index].push(
-                  ...readReq.result.map(({ msgId }) => msgId)
-                );
-                resolve();
-              };
-              readReq.onerror = function (e) {
-                finish();
-                reject(e);
-              };
-            });
-          })
-        )
-          .then(() => {
-            const size = +to - +from + 1;
-            if (size !== resultLength) {
-              console.error(
-                `[idb][read-by-range][one-transaction] range ${index} - unmatched checksum`,
-                {
-                  from,
-                  to,
-                  resultLength,
-                  size,
-                }
-              );
-            }
-            const end = performance.now();
-            return end - start;
-          })
-          .catch((e) => {
-            throw patchDOMException(e, {
-              tags: [
-                "idb",
-                "read-by-range",
-                "one-transaction",
-                `range ${index}`,
-              ],
-            });
-          })
-          .finally(() => {
-            removeLog(logId);
-          });
-      }
-    });
-    const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadByRange(results, ranges);
-    });
-    const end = performance.now();
-    oneTransactionSum = end - start;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(({ fullnames, range }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const { from, to } = range;
+                const objectStore = transaction.objectStore(fullname);
+                const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
+                readReq.onsuccess = () => {
+                  if (checksumData[countIndex] === undefined) {
+                    checksumData[countIndex] = [];
+                  }
+                  checksumData.push(
+                    ...readReq.result.map(({ msgId }) => msgId)
+                  );
+                  resolve();
+                };
+                readReq.onerror = () => {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-by-range", "one-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
     );
-    oneTransactionAverage = accumulateSum / numOfRanges;
+    const end = performance.now();
+	
+    oneTransactionSum = end - start;
+	oneTransactionAverage = oneTransactionSum / numOfRanges;
+	
+	verifyReadByRange(checksumData, ranges);
+	
+	removeLog(logId);
   }
   //#endregion
 

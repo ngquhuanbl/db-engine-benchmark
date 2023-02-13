@@ -1,4 +1,3 @@
-import memoize from "fast-memoize";
 import {
   DEFAULT_LIMIT,
   DEFAULT_READ_BY_LIMIT_COUNT,
@@ -36,110 +35,71 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog("[idb][read-by-limit][n-transaction] read");
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
-    const results: Array<string[]> = [];
-    for (let i = 0; i < count; i += 1) {
-      if (window.PARTITION_MODE) {
-        requests.push(
-          new Promise<void>((resolve, reject) => {
-            const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
 
-            const transaction = dbInstance.transaction(fullname, "readonly", {
-              durability,
-            });
-            const objectStore = transaction.objectStore(fullname);
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.openCursor();
-            let resultLength = 0;
-            readReq.onsuccess = function () {
-              const cursor = readReq.result;
-              if (cursor) {
-                resultLength += 1;
-                if (resultLength === limit) {
-                  finish();
-                  resolve();
-                } else cursor.continue();
-              } else {
-                finish();
-                resolve();
-              }
-            };
-            readReq.onerror = function () {
-              reject(
-                patchDOMException(readReq.error!, {
-                  tags: ["idb", "read-by-limit", "n-transaction"],
-                })
-              );
-            };
-          })
-        );
+    const requestsData: Array<{ fullnames: string[] }> = [];
+    for (let i = 0; i < count; i += 1) {
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
       } else {
-        requests.push(
-          new Promise<void>((resolve, reject) => {
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            let resultLength = 0;
-            const length = allPartitionKeys.length;
-            function execute(index: number) {
-              const partitionKey = allPartitionKeys[index];
-              const fullname = getTableFullname(partitionKey);
-              const transaction = dbInstance.transaction(fullname, "readonly", {
-                durability,
-              });
-              const objectStore = transaction.objectStore(fullname);
-              const readReq = objectStore.openCursor();
-              readReq.onsuccess = function () {
-                const cursor = readReq.result;
-                if (cursor) {
-                  resultLength += 1;
-                  if (results[i] === undefined) {
-                    results[i] = [];
-                  }
-                  results[i].push(cursor.value.msgId);
-                  if (resultLength === limit) {
-                    finish();
-                    resolve();
-                  } else cursor.continue();
-                } else {
-                  if (resultLength < limit && index < length - 1) {
-                    execute(index + 1);
-                  } else {
-                    finish();
-                    resolve();
-                  }
-                }
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(
-                  patchDOMException(readReq.error!, {
-                    tags: ["idb", "read-by-limit", "n-transaction"],
-                  })
-                );
-              };
-            }
-            execute(0);
-          })
-        );
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
       }
     }
-    const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadByLimit(results, +count, limit);
-    });
-    const end = performance.now();
-    nTransactionSum = end - start;
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / count;
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const transaction = dbInstance.transaction(
+                  fullname,
+                  "readonly",
+                  {
+                    durability,
+                  }
+                );
+                const objectStore = transaction.objectStore(fullname);
+                const readReq = objectStore.openCursor();
+                let resultLength = 0;
+                readReq.onsuccess = function () {
+                  const cursor = readReq.result;
+                  if (cursor) {
+                    resultLength += 1;
+
+                    if (checksumData[countIndex] === undefined)
+                      checksumData[countIndex] = [];
+                    checksumData[countIndex].push(cursor.value.msgId);
+
+                    if (resultLength === limit) {
+                      resolve();
+                    } else cursor.continue();
+                  } else {
+                    resolve();
+                  }
+                };
+                readReq.onerror = function () {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-by-limit", "n-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
+    );
+    const end = performance.now();
+
+    nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / count;
+
+    verifyReadByLimit(checksumData, count, limit);
 
     removeLog(logId);
   }
@@ -155,101 +115,64 @@ const originalExecute = async (
       durability,
     });
 
-    const getObjectStore = memoize((partitionKey: string) => {
-      const storeName = getTableFullname(partitionKey);
-      return transaction.objectStore(storeName);
-    });
-    const durations: number[] = [];
-    const requests: Promise<void>[] = [];
-    const results: Array<string[]> = [];
+    const requestsData: Array<{ fullnames: string[] }> = [];
     for (let i = 0; i < count; i += 1) {
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          if (window.PARTITION_MODE) {
-            const objectStore = getObjectStore(window.SELECTED_PARTITION_KEY);
-            const result = [];
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            const readReq = objectStore.openCursor();
-            readReq.onsuccess = function () {
-              const cursor = readReq.result;
-              if (cursor) {
-                result.push(cursor.value);
-                if (result.length === limit) {
-                  finish();
-                  resolve();
-                } else cursor.continue();
-              } else {
-                finish();
-                resolve();
-              }
-            };
-            readReq.onerror = function () {
-              finish();
-              reject(
-                patchDOMException(readReq.error!, {
-                  tags: ["idb", "read-by-limit", "one-transaction"],
-                })
-              );
-            };
-          } else {
-            let resultLength = 0;
-            const length = allPartitionKeys.length;
-            const execute = (index: number) => {
-              const partitionKey = allPartitionKeys[index];
-              const objectStore = getObjectStore(partitionKey);
-              const readReq = objectStore.openCursor();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              readReq.onsuccess = function () {
-                const cursor = readReq.result;
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname] });
+      } else {
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames });
+      }
+    }
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(({ fullnames }, countIndex) => new Promise<void>((resolve, reject) => {
+		let resultLength = 0;
+		const n = fullnames.length;
+		const execute = (index: number) => {
+			const fullname = fullnames[index];
+			const objectStore = transaction.objectStore(fullname);
+			const readReq = objectStore.openCursor();
+			readReq.onsuccess = () => {
+				const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
-                  if (results[i] === undefined) results[i] = [];
-                  results[i].push(cursor.value.msgId);
+                  if (checksumData[countIndex] === undefined) checksumData[countIndex] = [];
+                  checksumData[countIndex].push(cursor.value.msgId);
                   if (resultLength === limit) {
-                    finish();
                     resolve();
                   } else cursor.continue();
                 } else {
-                  if (resultLength < limit && index < length - 1) {
+                  if (resultLength < limit && index < n - 1) {
                     execute(index + 1);
                   } else {
-                    finish();
                     resolve();
                   }
                 }
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(
-                  patchDOMException(readReq.error!, {
-                    tags: ["idb", "read-by-limit", "one-transaction"],
-                  })
-                );
-              };
-            };
-            execute(0);
-          }
-        })
-      );
-    }
-    const start = performance.now();
-    await Promise.all(requests).then(() => {
-      verifyReadByLimit(results, +count, limit);
-    });
-    const end = performance.now();
-    oneTransactionSum = end - start;
-
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / count;
-
-    removeLog(logId);
+			}
+			readReq.onerror = () => {
+				reject(
+					patchDOMException(readReq.error!, {
+					  tags: ["idb", "read-by-limit", "one-transaction"],
+					})
+				  );
+			}
+		}
+		execute(0);
+	  }))
+    );
+	const end = performance.now();
+	oneTransactionSum = end - start;
+	
+	oneTransactionAverage = oneTransactionSum / count;
+	
+	verifyReadByLimit(checksumData, count, limit);
+	
+	removeLog(logId);
   }
   //#endregion
 

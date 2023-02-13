@@ -1,4 +1,3 @@
-import memoize from "fast-memoize";
 import { INDEX_NAME } from "../../../../constants/schema";
 import { ReadByIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
@@ -30,106 +29,72 @@ const originalExecute = async (
 
   //#region n transaction
   {
-    const durations: number[] = [];
-    const resultLengths: number[] = [];
-    const requests = keys.map((key, index) => {
-      const logId = addLog(
-        `[idb][read-by-index][n-transaction] index ${index}`
-      );
-      if (window.PARTITION_MODE) {
-        const fullname = getTableFullname(window.SELECTED_PARTITION_KEY);
-        const transaction = dbInstance.transaction(fullname, "readonly", {
-          durability,
-        });
-        return new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const objectStore = transaction.objectStore(fullname);
-          const indexObj = objectStore.index(INDEX_NAME);
-          const readReq = indexObj.getAll(key);
-          readReq.onsuccess = function () {
-            finish();
-            resolve();
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error, {
-                tags: [
-                  "idb",
-                  "read-by-index",
-                  "n-transaction",
-                  `index ${index}`,
-                ],
-              })
-            );
-          };
-        }).finally(() => removeLog(logId));
+    const logId = addLog(`[idb][read-by-index][n-transaction] read`);
+
+    const requestsData: Array<{ fullnames: string[]; key: string }> = [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname], key });
       } else {
-        let resultLength = 0;
-        const partitionRequests: Promise<void>[] = allPartitionKeys.map(
-          (partitionKey) => {
-            const fullname = getTableFullname(partitionKey);
-            const transaction = dbInstance.transaction(fullname, "readonly", {
-              durability,
-            });
-            const objectStore = transaction.objectStore(fullname);
-            return new Promise<void>((resolve, reject) => {
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const indexObj = objectStore.index(INDEX_NAME);
-              const readReq = indexObj.getAll(key);
-              readReq.onsuccess = function () {
-                finish();
-                if (readReq.result) {
-                  resultLength += readReq.result.length;
-                }
-                resolve();
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(readReq.error!);
-              };
-            });
-          }
-        );
-        return Promise.all(partitionRequests)
-          .then(() => {
-            resultLengths[index] = resultLength;
-          })
-          .catch((e) => {
-            throw patchDOMException(e, {
-              tags: ["idb", "read-by-index", "n-transaction", `index ${index}`],
-            });
-          })
-          .finally(() => {
-            removeLog(logId);
-          });
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames, key });
       }
-    });
+    }
+
+    const checksumData: number[] = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() =>
-      verifyReadByIndexField(resultLengths, keys)
+    await Promise.all(
+      requestsData.map(({ fullnames, key }, index) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const transaction = dbInstance.transaction(
+                  fullname,
+                  "readonly",
+                  {
+                    durability,
+                  }
+                );
+                const objectStore = transaction.objectStore(fullname);
+                const indexObj = objectStore.index(INDEX_NAME);
+                const readReq = indexObj.getAll(key);
+                readReq.onsuccess = function () {
+                  const length = readReq.result.length;
+                  if (checksumData[index] === undefined)
+                    checksumData[index] = 0;
+                  checksumData[index] += length;
+                  resolve();
+                };
+                readReq.onerror = function () {
+                  reject(
+                    patchDOMException(readReq.error!, {
+                      tags: ["idb", "read-by-index", "n-transaction"],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
     );
     const end = performance.now();
-    nTransactionSum = end - start;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
-    );
-    nTransactionAverage = accumulateSum / numOfKeys;
+    nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / numOfKeys;
+
+    verifyReadByIndexField(checksumData, keys);
+
+    removeLog(logId);
   }
   //#endregion
 
   //#region one transaction
   {
+    const logId = addLog(`[idb][read-by-index][one-transaction] read`);
     const allPartitionKeys = getAllPossibleConvIds();
     const allTableFullnames = allPartitionKeys.map((partitionKey) =>
       getTableFullname(partitionKey)
@@ -137,110 +102,65 @@ const originalExecute = async (
     const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
       durability,
     });
-    const getIndexObj = memoize((partitionKey: string) => {
-      const storeName = getTableFullname(partitionKey);
-      return transaction.objectStore(storeName).index(INDEX_NAME);
-    });
-    const durations: number[] = [];
-    const resultLengths: number[] = [];
-    const requests = keys.map((key, index) => {
-      const logId = addLog(
-        `[idb][read-by-index][one-transaction] index ${index}`
-      );
-      if (window.PARTITION_MODE) {
-        const indexObj = getIndexObj(window.SELECTED_PARTITION_KEY);
-        return new Promise<void>((resolve, reject) => {
-          const start = performance.now();
-          const finish = () => {
-            const end = performance.now();
-            durations.push(end - start);
-          };
-          const readReq = indexObj.getAll(key);
-          readReq.onsuccess = function () {
-            finish();
-            resolve();
-          };
-          readReq.onerror = function () {
-            finish();
-            reject(
-              patchDOMException(readReq.error, {
-                tags: [
-                  "idb",
-                  "read-by-index",
-                  "one-transaction",
-                  `index ${index}`,
-                ],
-              })
-            );
-          };
-        }).finally(() => removeLog(logId));
+
+    const requestsData: Array<{ fullnames: string[]; key: string }> = [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (PARTITION_MODE) {
+        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
+        requestsData.push({ fullnames: [fullname], key });
       } else {
-        let resultLength = 0;
-        const partitionRequets: Promise<void>[] = allPartitionKeys.map(
-          (partitionKey) => {
-            const indexObj = getIndexObj(partitionKey);
-            return new Promise((resolve, reject) => {
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              const readReq = indexObj.getAll(key);
-              readReq.onsuccess = function () {
-                finish();
-                if (readReq.result) {
-                  resultLength += readReq.result.length;
-                }
-                resolve();
-              };
-              readReq.onerror = function () {
-                finish();
-                reject(
-                  patchDOMException(readReq.error!, {
-                    tags: [
-                      "idb",
-                      "read-by-index",
-                      "one-transaction",
-                      `index ${index}`,
-                    ],
-                  })
-                );
-              };
-            });
-          }
-        );
-        return Promise.all(partitionRequets)
-          .then(() => {
-            resultLengths[index] = resultLength;
-          })
-          .catch((e) => {
-            throw patchDOMException(e, {
-              tags: [
-                "idb",
-                "read-by-index",
-                "one-transaction",
-                `index ${index}`,
-              ],
-            });
-          })
-          .finally(() => {
-            removeLog(logId);
-          });
+        const fullnames = allPartitionKeys.map(getTableFullname);
+        requestsData.push({ fullnames, key });
       }
-    });
+    }
+
+    const checksumData: number[] = [];
+
     const start = performance.now();
-    await Promise.all(requests).then(() =>
-      verifyReadByIndexField(resultLengths, keys)
+    await Promise.all(
+      requestsData.map(({ fullnames, key }, keyIndex) =>
+        Promise.all(
+          fullnames.map(
+            (fullname) =>
+              new Promise<void>((resolve, reject) => {
+                const objectStore = transaction.objectStore(fullname);
+                const indexObj = objectStore.index(INDEX_NAME);
+                const readReq = indexObj.getAll(key);
+                readReq.onsuccess = function () {
+                  const length = readReq.result.length;
+                  if (checksumData[keyIndex] === undefined)
+                    checksumData[keyIndex] = 0;
+                  checksumData[keyIndex] += length;
+                  resolve();
+                };
+                readReq.onerror = function () {
+                  reject(
+                    patchDOMException(readReq.error, {
+                      tags: [
+                        "idb",
+                        "read-by-index",
+                        "one-transaction",
+                        `index ${keyIndex}`,
+                      ],
+                    })
+                  );
+                };
+              })
+          )
+        )
+      )
     );
     const end = performance.now();
-    oneTransactionSum = end - start;
 
-    const accumulateSum = durations.reduce(
-      (result, current) => result + current,
-      0
-    );
-    oneTransactionAverage = accumulateSum / numOfKeys;
+    oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / numOfKeys;
+
+    verifyReadByIndexField(checksumData, keys);
+
+    removeLog(logId);
   }
+
   //#endregion
 
   return {
