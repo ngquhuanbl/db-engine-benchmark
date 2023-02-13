@@ -27,9 +27,6 @@ const originalExecute = async (
   let oneTransactionAverage = -1;
   let oneTransactionSum = -1;
 
-  // Checksum
-  let resultsLength = -1;
-
   //#region n transaction
   {
     const logId = addLog(`[idb][read-by-non-index][n-transaction] read`);
@@ -45,7 +42,7 @@ const originalExecute = async (
       }
     }
 
-    const checksumData: Array<any[]> = [];
+    const checksumData: Array<{ isErrorInfo: boolean; status: number }[]> = [];
 
     const start = performance.now();
     await Promise.all(
@@ -68,7 +65,8 @@ const originalExecute = async (
                     if (checkFn(value)) {
                       if (checksumData[countIndex] === undefined)
                         checksumData[countIndex] = [];
-                      checksumData[countIndex].push(value);
+                      const { isErrorInfo, status } = value;
+                      checksumData[countIndex].push({ isErrorInfo, status });
                     }
                     cursor.continue();
                   } else resolve();
@@ -107,7 +105,7 @@ const originalExecute = async (
       }
     }
 
-    const checksumData: Array<any[]> = [];
+    const checksumData: Array<{ isErrorInfo: boolean; status: number }[]> = [];
 
     const allTableFullnames = allPartitionKeys.map(getTableFullname);
     const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
@@ -137,7 +135,8 @@ const originalExecute = async (
                     if (checkFn(value)) {
                       if (checksumData[countIndex] === undefined)
                         checksumData[countIndex] = [];
-                      checksumData[countIndex].push(value);
+                      const { isErrorInfo, status } = value;
+                      checksumData[countIndex].push({ isErrorInfo, status });
                     }
                     cursor.continue();
                   } else {

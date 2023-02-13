@@ -48,7 +48,7 @@ const originalExecute = async (
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames, range }, countIndex) =>
+      requestsData.map(({ fullnames, range }, rangeIndex) =>
         Promise.all(
           fullnames.map(
             (fullname) =>
@@ -64,10 +64,10 @@ const originalExecute = async (
                 const objectStore = transaction.objectStore(fullname);
                 const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
                 readReq.onsuccess = () => {
-                  if (checksumData[countIndex] === undefined) {
-                    checksumData[countIndex] = [];
+                  if (checksumData[rangeIndex] === undefined) {
+                    checksumData[rangeIndex] = [];
                   }
-                  checksumData.push(
+                  checksumData[rangeIndex].push(
                     ...readReq.result.map(({ msgId }) => msgId)
                   );
                   resolve();
@@ -121,7 +121,7 @@ const originalExecute = async (
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames, range }, countIndex) =>
+      requestsData.map(({ fullnames, range }, rangeIndex) =>
         Promise.all(
           fullnames.map(
             (fullname) =>
@@ -130,10 +130,10 @@ const originalExecute = async (
                 const objectStore = transaction.objectStore(fullname);
                 const readReq = objectStore.getAll(IDBKeyRange.bound(from, to));
                 readReq.onsuccess = () => {
-                  if (checksumData[countIndex] === undefined) {
-                    checksumData[countIndex] = [];
+                  if (checksumData[rangeIndex] === undefined) {
+                    checksumData[rangeIndex] = [];
                   }
-                  checksumData.push(
+                  checksumData[rangeIndex].push(
                     ...readReq.result.map(({ msgId }) => msgId)
                   );
                   resolve();

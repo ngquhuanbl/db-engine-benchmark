@@ -68,7 +68,7 @@ const originalExecute = async (
                   if (cursor) {
                     if (checksumData[countIndex] === undefined)
                       checksumData[countIndex] = [];
-                    checksumData[countIndex].push(cursor.value);
+                    checksumData[countIndex].push(cursor.value.msgId);
                     cursor.continue();
                   } else {
                     resolve();
@@ -130,7 +130,7 @@ const originalExecute = async (
                   if (cursor) {
                     if (checksumData[countIndex] === undefined)
                       checksumData[countIndex] = [];
-                    checksumData[countIndex].push(cursor.value);
+                    checksumData[countIndex].push(cursor.value.msgId);
                     cursor.continue();
                   } else {
                     resolve();

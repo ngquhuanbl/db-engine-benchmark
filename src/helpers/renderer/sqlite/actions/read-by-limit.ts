@@ -35,54 +35,25 @@ const originalExecute = async (
       "[nodeIntegration-sqlite][read-by-limit][n-transaction] read"
     );
 
-    const durations: number[] = [];
-    const countRequests: Promise<void>[] = [];
-    const resultLengths: Record<number, number> = {};
-    const results: Array<string[]> = [];
+    const requestsData: Array<{ partitionKeys: string[] }> = [];
     for (let i = 0; i < count; i += 1) {
       if (PARTITION_MODE) {
-        countRequests.push(
-          new Promise((resolve, reject) => {
-            const query = `SELECT * FROM ${escapeStr(
-              TABLE_NAME
-            )} LIMIT ${limit}`;
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
-              conn.all(query, undefined, (error) => {
-                finish();
-                if (error)
-                  reject(
-                    patchJSError(error, {
-                      tags: [
-                        "nodeIntegration-sqlite",
-                        "read-by-limit",
-                        "n-transaction",
-                      ],
-                    })
-                  );
-                else {
-                  // No need to do checksum since we traverse only one partition
-                  resolve();
-                }
-              })
-            );
-          })
-        );
+        requestsData.push({ partitionKeys: [SELECTED_PARTITION_KEY] });
       } else {
-        countRequests.push(
+        requestsData.push({ partitionKeys: [...allPartitionKeys] });
+      }
+    }
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ partitionKeys }, countIndex) =>
           new Promise<void>((resolve, reject) => {
             let resultLength = 0;
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
             const execute = (partitionIndex: number) => {
-              const partitionKey = allPartitionKeys[partitionIndex];
+              const partitionKey = partitionKeys[partitionIndex];
               const currentLimit = limit - resultLength;
               const query = `SELECT * FROM ${escapeStr(
                 TABLE_NAME
@@ -90,7 +61,6 @@ const originalExecute = async (
               openSQLiteDatabase(partitionKey).then((conn) => {
                 conn.all(query, undefined, (error, rows) => {
                   if (error) {
-                    finish();
                     reject(
                       patchJSError(error, {
                         tags: [
@@ -102,15 +72,16 @@ const originalExecute = async (
                     );
                   } else {
                     resultLength += rows.length;
-                    if (results[i] === undefined) results[i] = [];
-                    results[i].push(...rows.map(({ msgId }) => msgId));
+                    if (checksumData[countIndex] === undefined)
+                      checksumData[countIndex] = [];
+                    checksumData[countIndex].push(
+                      ...rows.map(({ msgId }) => msgId)
+                    );
 
                     if (
                       resultLength === limit ||
-                      partitionIndex === allPartitionKeys.length - 1
+                      partitionIndex === partitionKeys.length - 1
                     ) {
-                      resultLengths[i] = resultLength;
-                      finish();
                       resolve();
                     } else execute(partitionIndex + 1);
                   }
@@ -119,29 +90,13 @@ const originalExecute = async (
             };
             execute(0);
           })
-        );
-      }
-    }
-    const start = performance.now();
-    await Promise.all(countRequests);
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / count;
 
-    const allLengths = Object.values(resultLengths);
-    if (allLengths[0] !== allLengths[allLengths.length - 1]) {
-      console.error(
-        "[nodeIntegration-sqlite][read-by-limit][n-transaction] inconsistent result length",
-        {
-          expected: allLengths[0],
-          actual: allLengths[allLengths.length - 1],
-        }
-      );
-    }
-
-    verifyReadByLimit(results, +count, limit);
-
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / count;
+    verifyReadByLimit(checksumData, count, limit);
 
     removeLog(logId);
   }
@@ -152,19 +107,21 @@ const originalExecute = async (
     const logId = addLog(
       "[nodeIntegration-sqlite][read-by-limit][one-transaction] read"
     );
-    let durations: number[] = [];
-    let resultLengths: Record<number, number> = {};
-    const results: Array<string[]> = [];
+    const partitionKeys: string[] = [];
+    if (PARTITION_MODE) partitionKeys.push(SELECTED_PARTITION_KEY);
+    else partitionKeys.push(...allPartitionKeys);
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    if (PARTITION_MODE) {
-      await new Promise<void>((resolve, reject) => {
-        const start = performance.now();
-        const finish = () => {
-          const end = performance.now();
-          durations.push(end - start);
-        };
-        openSQLiteDatabase(SELECTED_PARTITION_KEY).then((conn) =>
+    await new Promise<void>((resolve, reject) => {
+      let resultLength = 0;
+      function execute(partitionIndex: number) {
+        const partitionKey = partitionKeys[partitionIndex];
+        const currentLimit = limit - resultLength;
+        openSQLiteDatabase(partitionKey).then((conn) =>
           conn.serialize((conn) => {
+            let stop = false;
             conn.run("BEGIN TRANSACTION", (error) => {
               if (error)
                 reject(
@@ -182,8 +139,8 @@ const originalExecute = async (
             for (let i = 0; i < count; i += 1) {
               const query = `SELECT * FROM ${escapeStr(
                 TABLE_NAME
-              )} LIMIT ${limit}`;
-              conn.all(query, undefined, (error) => {
+              )} LIMIT ${currentLimit}`;
+              conn.all(query, undefined, (error, rows) => {
                 if (error) {
                   reject(
                     patchJSError(error, {
@@ -194,13 +151,28 @@ const originalExecute = async (
                       ],
                     })
                   );
+                } else {
+                  if (checksumData[i] === undefined) checksumData[i] = [];
+                  checksumData[i].push(...rows.map(({ msgId }) => msgId));
+
+                  if (i === 0) {
+                    // Only update once
+                    resultLength += rows.length;
+                  }
+                  if (i === count - 1) {
+                    if (
+                      resultLength < limit &&
+                      partitionIndex < partitionKeys.length - 1
+                    ) {
+                      execute(partitionIndex + 1); // Only schedule once
+                    } else stop = true;
+                  }
                 }
               });
             }
 
             conn.run("COMMIT TRANSACTION", (error) => {
-              finish();
-              if (error)
+              if (error) {
                 reject(
                   patchJSError(error, {
                     tags: [
@@ -211,116 +183,19 @@ const originalExecute = async (
                     ],
                   })
                 );
-              else resolve();
+              } else if (stop) resolve();
             });
           })
         );
-      });
-    } else {
-      await new Promise<void>((resolve, reject) => {
-        let resultLength = 0;
-        const start = performance.now();
-        const finish = () => {
-          const end = performance.now();
-          durations.push(end - start);
-        };
-        function execute(partitionIndex: number) {
-          const partitionKey = allPartitionKeys[partitionIndex];
-          const currentLimit = limit - resultLength;
-          openSQLiteDatabase(partitionKey).then((conn) =>
-            conn.serialize((conn) => {
-              let stop = false;
-              conn.run("BEGIN TRANSACTION", (error) => {
-                if (error)
-                  reject(
-                    patchJSError(error, {
-                      tags: [
-                        "nodeIntegration-sqlite",
-                        "read-by-limit",
-                        "1-transaction",
-                        "begin-transaction",
-                      ],
-                    })
-                  );
-              });
-
-              for (let i = 0; i < count; i += 1) {
-                const query = `SELECT * FROM ${escapeStr(
-                  TABLE_NAME
-                )} LIMIT ${currentLimit}`;
-                conn.all(query, undefined, (error, rows) => {
-                  if (error) {
-                    reject(
-                      patchJSError(error, {
-                        tags: [
-                          "nodeIntegration-sqlite",
-                          "read-by-limit",
-                          "1-transaction",
-                        ],
-                      })
-                    );
-                  } else {
-                    if (results[i] === undefined) results[i] = [];
-                    results[i].push(...rows.map(({ msgId }) => msgId));
-
-                    if (i === 0) {
-                      // Only update once
-                      resultLength += rows.length;
-                      if (resultLengths[i] === undefined) resultLengths[i] = 0;
-                      resultLengths[i] += rows.length;
-                    }
-                    if (i === count - 1) {
-                      if (
-                        resultLength < limit &&
-                        partitionIndex < allPartitionKeys.length - 1
-                      ) {
-                        execute(partitionIndex + 1); // Only schedule once
-                      } else stop = true;
-                    }
-                  }
-                });
-              }
-
-              conn.run("COMMIT TRANSACTION", (error) => {
-                if (stop) finish();
-                if (error) {
-                  reject(
-                    patchJSError(error, {
-                      tags: [
-                        "nodeIntegration-sqlite",
-                        "read-by-limit",
-                        "1-transaction",
-                        "commit-transaction",
-                      ],
-                    })
-                  );
-                } else if (stop) resolve();
-              });
-            })
-          );
-        }
-        execute(0);
-      });
-    }
-
-    const allLengths = Object.values(resultLengths).sort();
-    if (allLengths[0] !== allLengths[allLengths.length - 1]) {
-      console.error(
-        "[nodeIntegration-sqlite][read-by-limit][one-transaction] inconsistent result length",
-        {
-          expected: allLengths[0],
-          actual: allLengths[allLengths.length - 1],
-        }
-      );
-    }
-
+      }
+      execute(0);
+    });
     const end = performance.now();
     oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / count;
 
-    verifyReadByLimit(results, +count, limit);
+    verifyReadByLimit(checksumData, count, limit);
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / count;
     removeLog(logId);
   }
   //#endregion

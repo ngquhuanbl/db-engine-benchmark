@@ -51,47 +51,46 @@ const originalExecute = async (
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames }, countIndex) =>
-        Promise.all(
-          fullnames.map(
-            (fullname) =>
-              new Promise<void>((resolve, reject) => {
-                const transaction = dbInstance.transaction(
-                  fullname,
-                  "readonly",
-                  {
-                    durability,
-                  }
-                );
-                const objectStore = transaction.objectStore(fullname);
-                const readReq = objectStore.openCursor();
-                let resultLength = 0;
-                readReq.onsuccess = function () {
-                  const cursor = readReq.result;
-                  if (cursor) {
-                    resultLength += 1;
-
-                    if (checksumData[countIndex] === undefined)
-                      checksumData[countIndex] = [];
-                    checksumData[countIndex].push(cursor.value.msgId);
-
-                    if (resultLength === limit) {
-                      resolve();
-                    } else cursor.continue();
+      requestsData.map(
+        ({ fullnames }, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            let resultLength = 0;
+            const n = fullnames.length;
+            const execute = (index: number) => {
+              const fullname = fullnames[index];
+              const transaction = dbInstance.transaction(fullname, "readonly", {
+                durability,
+              });
+              const objectStore = transaction.objectStore(fullname);
+              const readReq = objectStore.openCursor();
+              readReq.onsuccess = () => {
+                const cursor = readReq.result;
+                if (cursor) {
+                  resultLength += 1;
+                  if (checksumData[countIndex] === undefined)
+                    checksumData[countIndex] = [];
+                  checksumData[countIndex].push(cursor.value.msgId);
+                  if (resultLength === limit) {
+                    resolve();
+                  } else cursor.continue();
+                } else {
+                  if (resultLength < limit && index < n - 1) {
+                    execute(index + 1);
                   } else {
                     resolve();
                   }
-                };
-                readReq.onerror = function () {
-                  reject(
-                    patchDOMException(readReq.error!, {
-                      tags: ["idb", "read-by-limit", "n-transaction"],
-                    })
-                  );
-                };
-              })
-          )
-        )
+                }
+              };
+              readReq.onerror = () => {
+                reject(
+                  patchDOMException(readReq.error!, {
+                    tags: ["idb", "read-by-limit", "one-transaction"],
+                  })
+                );
+              };
+            };
+            execute(0);
+          })
       )
     );
     const end = performance.now();
@@ -130,18 +129,21 @@ const originalExecute = async (
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames }, countIndex) => new Promise<void>((resolve, reject) => {
-		let resultLength = 0;
-		const n = fullnames.length;
-		const execute = (index: number) => {
-			const fullname = fullnames[index];
-			const objectStore = transaction.objectStore(fullname);
-			const readReq = objectStore.openCursor();
-			readReq.onsuccess = () => {
-				const cursor = readReq.result;
+      requestsData.map(
+        ({ fullnames }, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            let resultLength = 0;
+            const n = fullnames.length;
+            const execute = (index: number) => {
+              const fullname = fullnames[index];
+              const objectStore = transaction.objectStore(fullname);
+              const readReq = objectStore.openCursor();
+              readReq.onsuccess = () => {
+                const cursor = readReq.result;
                 if (cursor) {
                   resultLength += 1;
-                  if (checksumData[countIndex] === undefined) checksumData[countIndex] = [];
+                  if (checksumData[countIndex] === undefined)
+                    checksumData[countIndex] = [];
                   checksumData[countIndex].push(cursor.value.msgId);
                   if (resultLength === limit) {
                     resolve();
@@ -153,26 +155,27 @@ const originalExecute = async (
                     resolve();
                   }
                 }
-			}
-			readReq.onerror = () => {
-				reject(
-					patchDOMException(readReq.error!, {
-					  tags: ["idb", "read-by-limit", "one-transaction"],
-					})
-				  );
-			}
-		}
-		execute(0);
-	  }))
+              };
+              readReq.onerror = () => {
+                reject(
+                  patchDOMException(readReq.error!, {
+                    tags: ["idb", "read-by-limit", "one-transaction"],
+                  })
+                );
+              };
+            };
+            execute(0);
+          })
+      )
     );
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-	oneTransactionAverage = oneTransactionSum / count;
-	
-	verifyReadByLimit(checksumData, count, limit);
-	
-	removeLog(logId);
+    const end = performance.now();
+    oneTransactionSum = end - start;
+
+    oneTransactionAverage = oneTransactionSum / count;
+
+    verifyReadByLimit(checksumData, count, limit);
+
+    removeLog(logId);
   }
   //#endregion
 

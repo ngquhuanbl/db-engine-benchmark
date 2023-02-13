@@ -16,9 +16,9 @@ export const getMsgStatus = memoize((index: number): number => {
   return Math.round(Math.random() * 6);
 });
 
-export function getIsErrorInfo(index: number): boolean {
+export const getIsErrorInfo = memoize((index: number): boolean => {
   return !!Math.round(Math.random());
-}
+});
 
 export function generateData(size: number): Array<Data> {
   let msgIdCounter = 0;
