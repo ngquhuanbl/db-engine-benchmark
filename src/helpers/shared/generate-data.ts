@@ -9,13 +9,13 @@ export const getConvId = memoize((index: number): string => {
 });
 
 export const getMsgStatus = memoize((index: number): number => {
-	const isNegative = !!Math.round(Math.random());
-	return Math.round(Math.random() * 10) * (isNegative ? -1 : 1);
-})
+  const isNegative = !!Math.round(Math.random());
+  return Math.round(Math.random() * 10) * (isNegative ? -1 : 1);
+});
 
-export function getIsErrorInfo(index: number): boolean {
-	return !!Math.round(Math.random());
-}
+export const getIsErrorInfo = memoize((index: number): boolean => {
+  return !!Math.round(Math.random());
+});
 
 export function generateData(size: number): Array<Data> {
   let msgIdCounter = 0;
@@ -214,8 +214,8 @@ export function getData(index: number): Data {
     ...DATA_OBJECT,
     msgId,
     toUid,
-	status: getMsgStatus(index),
-	isErrorInfo: getIsErrorInfo(index)
+    status: getMsgStatus(index),
+    isErrorInfo: getIsErrorInfo(index),
   };
 }
 

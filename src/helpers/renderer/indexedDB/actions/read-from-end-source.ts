@@ -5,6 +5,7 @@ import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadFromEndSourceResult } from "../../../../types/shared/result";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadFromEndSource } from "../../../shared/verify-results";
 import { openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -30,55 +31,51 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog("[idb][read-from-end-source][n-transaction] read");
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
-            durability,
-          });
-          const objectStore = transaction.objectStore(TABLE_NAME);
-          const start = performance.now();
-          const readReq = objectStore.openCursor(undefined, "prev");
-          const result = [];
-          readReq.onsuccess = function () {
-            const cursor = readReq.result;
-            if (cursor) {
-              result.push(cursor.value);
-              cursor.continue();
-            } else {
-              const end = performance.now();
 
-              const resultLength = result.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[idb][read-from-end-source][n-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              resolve(end - start);
-            }
-          };
-          readReq.onerror = function () {
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: ["idb", "read-from-end-source", "n-transaction"],
-              })
-            );
-          };
-        })
-      );
-    }
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    const results = await Promise.all(requests);
-    const end = performance.now();
-    nTransactionSum = end - start;
+    await Promise.all(
+      Array.from({ length: readFromEndSourceCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(TABLE_NAME);
+            const readReq = objectStore.openCursor(undefined, "prev");
+            const result = [];
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                cursor.continue();
+              } else {
+                if (checksumData[countIndex] === undefined)
+                  checksumData[countIndex] = [];
+                checksumData[countIndex].push(
+                  ...result.map(({ msgId }) => msgId)
+                );
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readFromEndSourceCount;
+                resolve();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-from-end-source", "n-transaction"],
+                })
+              );
+            };
+          })
+      )
+    );
+    const end = performance.now();
+
+    nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readFromEndSourceCount;
+
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
 
     removeLog(logId);
   }
@@ -91,50 +88,47 @@ const originalExecute = async (
       durability,
     });
     const objectStore = transaction.objectStore(TABLE_NAME);
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          const readReq = objectStore.openCursor(undefined, "prev");
-          const result = [];
-          readReq.onsuccess = function () {
-            const cursor = readReq.result;
-            if (cursor) {
-              result.push(cursor.value);
-              cursor.continue();
-            } else {
-              const resultLength = result.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[idb][read-from-end-source][one-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              const end = performance.now();
-              resolve(end - start);
-            }
-          };
-          readReq.onerror = function () {
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: ["idb", "read-from-end-source", "one-transaction"],
-              })
-            );
-          };
-        })
-      );
-    }
-    const start = performance.now();
-    const results = await Promise.all(requests);
-    const end = performance.now();
-    oneTransactionSum = end - start;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readFromEndSourceCount;
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      Array.from({ length: readFromEndSourceCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const readReq = objectStore.openCursor(undefined, "prev");
+            const result = [];
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                cursor.continue();
+              } else {
+                if (checksumData[countIndex] === undefined)
+                  checksumData[countIndex] = [];
+                checksumData[countIndex].push(
+                  ...result.map(({ msgId }) => msgId)
+                );
+
+                resolve();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-from-end-source", "n-transaction"],
+                })
+              );
+            };
+          })
+      )
+    );
+    const end = performance.now();
+
+    oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / readFromEndSourceCount;
+
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
 
     removeLog(logId);
   }

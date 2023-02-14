@@ -5,6 +5,7 @@ import { ReadByNonIndexResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getNonIndexConditionSQLite } from "../../../shared/non-index-conditions";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyNonIndexField } from "../../../shared/verify-results";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -24,74 +25,74 @@ const originalExecute = async (
   const checkStatement = getNonIndexConditionSQLite();
 
   // Checksum
-  let resultsLength = -1;
 
   //#region n transaction
   {
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const query = `SELECT * FROM ${escapeStr(
-        TABLE_NAME
-      )} WHERE ${checkStatement}`;
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const logId = addLog(
-            `[preloaded-sqlite][read-by-non-index][n-transaction] index ${i}`
-          );
-          const params = [];
-          const start = performance.now();
-          conn.all(query, params, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: [
-                    "preload-sqlite",
-                    "read-by-non-index",
-                    "n-transaction",
-                    `index ${i}`,
-                  ],
-                })
-              );
-            else {
-              const end = performance.now();
-              resolve(end - start);
-              if (resultsLength === -1) resultsLength = results.length;
-              else if (resultsLength !== results.length) {
-                console.error(
-                  "[preload-sqlite][read-by-non-index][n-transaction] inconsistent result length",
-                  {
-                    expected: resultsLength,
-                    actual: results.length,
-                  }
-                );
-              }
-              if (results.length === 0) {
-                console.error(
-                  "[preload-sqlite][read-by-non-index][n-transaction] empty result"
-                );
-              }
-            }
-            removeLog(logId);
-          });
-        })
-      );
-    }
+    const logId = addLog(
+      `[preloaded-sqlite][read-by-non-index][n-transaction] read`
+    );
+
+    const checksumData: Array<{ status: number; isErrorInfo: boolean }[]> = [];
+
+    const query = `SELECT * FROM ${escapeStr(
+      TABLE_NAME
+    )} WHERE ${checkStatement}`;
+
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(
+      Array.from({ length: count }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            conn.all(query, [], (error, rows) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "preload-sqlite",
+                      "read-by-non-index",
+                      "n-transaction",
+                    ],
+                  })
+                );
+              else {
+                if (rows) {
+                  if (checksumData[countIndex] == undefined)
+                    checksumData[countIndex] = [];
+                  checksumData[countIndex].push(
+                    ...rows.map(({ isErrorInfo, status }) => ({
+                      isErrorInfo,
+                      status,
+                    }))
+                  );
+                }
+                resolve();
+              }
+            });
+          })
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / count;
 
-    const accumulateSum = results.reduce(
-      (result, current) => result + current,
-      0
-    );
-    nTransactionAverage = accumulateSum / count;
+    verifyNonIndexField(checksumData, count);
+
+    removeLog(logId);
   }
   //#endregion
 
   //#region one transaction
   {
-    const results: number[] = [];
+    const logId = addLog(
+      `[preloaded-sqlite][read-by-non-index][one-transaction] read`
+    );
+
+    const checksumData: Array<{ status: number; isErrorInfo: boolean }[]> = [];
+
+    const query = `SELECT * FROM ${escapeStr(
+      TABLE_NAME
+    )} WHERE ${checkStatement}`;
+
     const start = performance.now();
     await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
@@ -110,15 +111,7 @@ const originalExecute = async (
         });
 
         for (let index = 0; index < count; index += 1) {
-          const params: any[] = [];
-          const query = `SELECT * FROM ${escapeStr(
-            TABLE_NAME
-          )} WHERE ${checkStatement}`;
-          const logId = addLog(
-            `[preloaded-sqlite][read-by-non-index][one-transaction] index ${index}`
-          );
-          const start = performance.now();
-          conn.all(query, params, (error, rows) => {
+          conn.all(query, [], (error, rows) => {
             if (error) {
               reject(
                 patchJSError(error, {
@@ -126,30 +119,20 @@ const originalExecute = async (
                     "preload-sqlite",
                     "read-by-non-index",
                     "1-transaction",
-                    `index ${index}`,
                   ],
                 })
               );
             } else {
-              const end = performance.now();
-              results.push(end - start);
-              if (resultsLength === -1) resultsLength = results.length;
-              else if (resultsLength !== results.length) {
-                console.error(
-                  "[preload-sqlite][read-by-non-index][one-transaction] inconsistent result length",
-                  {
-                    expected: resultsLength,
-                    actual: results.length,
-                  }
-                );
-              }
-              if (results.length === 0) {
-                console.error(
-                  "[preload-sqlite][read-by-non-index][one-transaction] empty result"
+              if (rows) {
+                if (checksumData[index] === undefined) checksumData[index] = [];
+                checksumData[index].push(
+                  ...rows.map(({ isErrorInfo, status }) => ({
+                    isErrorInfo,
+                    status,
+                  }))
                 );
               }
             }
-            removeLog(logId);
           });
         }
 
@@ -171,12 +154,11 @@ const originalExecute = async (
     });
     const end = performance.now();
     oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / count;
 
-    const accumulateSum = results.reduce(
-      (result, current) => result + current,
-      0
-    );
-    oneTransactionAverage = accumulateSum / count;
+    verifyNonIndexField(checksumData, count);
+
+    removeLog(logId);
   }
   //#endregion
 

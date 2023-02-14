@@ -7,6 +7,7 @@ import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
+import { verifyReadFromEndSource } from "../../../shared/verify-results";
 
 const originalExecute = async (
   datasetSize: number,
@@ -28,65 +29,72 @@ const originalExecute = async (
     const addLogRequest = addLog(
       "[nodeIntegration-sqlite][read-from-end-source][n-transaction] read"
     );
+
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
       " , "
     )}`;
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: [
-                    "nodeIntegration-sqlite",
-                    "read-from-end-source",
-                    "n-transaction",
-                  ],
-                })
-              );
-            else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
-                console.error(
-                  "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      Array.from({ length: readFromEndSourceCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            conn.all(query, undefined, (error, rows) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "nodeIntegration-sqlite",
+                      "read-from-end-source",
+                      "n-transaction",
+                    ],
+                  })
                 );
+              else {
+                if (rows) {
+                  if (checksumData[countIndex] === undefined)
+                    checksumData[countIndex] = [];
+                  checksumData[countIndex].push(
+                    ...rows.map(({ msgId }) => msgId)
+                  );
+                }
+                resolve();
               }
-              resolve(end - start);
-            }
-          });
-        })
-      );
-    }
-	const start = performance.now();
-    const results = await Promise.all(requests);
-	const end = performance.now();
-	nTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readFromEndSourceCount;
-	
+            });
+          })
+      )
+    );
+
+    const end = performance.now();
+    nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readFromEndSourceCount;
+
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
+
     addLogRequest.then((logId) => removeLog(logId));
   }
   //#endregion
 
   //#region one transaction
   {
+    const addLogRequest = addLog(
+      "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
+    );
+
+    const query = `SELECT * FROM ${escapeStr(
+      TABLE_NAME
+    )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
+      " , "
+    )}`;
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
-      const addLogRequest = addLog(
-        "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
-      );
+    await new Promise<void>((resolve, reject) => {
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
@@ -103,11 +111,6 @@ const originalExecute = async (
         });
 
         for (let i = 0; i < readFromEndSourceCount; i += 1) {
-          const query = `SELECT * FROM ${escapeStr(
-            TABLE_NAME
-          )} ORDER BY ${PRIMARY_KEYS.map(
-            (key) => `${escapeStr(key)} DESC`
-          ).join(" , ")}`;
           const start = performance.now();
           conn.all(query, undefined, (error, rows) => {
             if (error) {
@@ -121,18 +124,10 @@ const originalExecute = async (
                 })
               );
             } else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[nodeIntegration-sqlite][read-from-end-source][one-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
+              if (rows) {
+                if (checksumData[i] === undefined) checksumData[i] = [];
+                checksumData[i].push(...rows.map(({ msgId }) => msgId));
               }
-              results.push(end - start);
             }
           });
         }
@@ -149,16 +144,17 @@ const originalExecute = async (
                 ],
               })
             );
-          else resolve(results);
-          addLogRequest.then((logId) => removeLog(logId));
+          else resolve();
         });
       });
     });
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readFromEndSourceCount;
+    const end = performance.now();
+    oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / readFromEndSourceCount;
+
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
+
+    addLogRequest.then((logId) => removeLog(logId));
   }
   //#endregion
 

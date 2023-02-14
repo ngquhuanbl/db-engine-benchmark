@@ -185,4 +185,6 @@ declare global {
     ) => void;
     sendMessage: (message: Message) => void;
   };
+  
+  var VERIFY_MODE_ON: boolean;
 }

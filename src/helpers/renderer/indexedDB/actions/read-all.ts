@@ -3,8 +3,8 @@ import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadAllExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadAllResult } from "../../../../types/shared/result";
-import { lastOfArray } from "../../../shared/last-of-array";
 import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadAll } from "../../../shared/verify-results";
 import { openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
@@ -28,73 +28,29 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog("[idb][read-all][n-transaction] read all");
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readAllCount; i += 1) {
-      const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
-        durability,
-      });
-      const objectStore = transaction.objectStore(TABLE_NAME);
-      requests.push(
-        new Promise<number>(async (resolve, reject) => {
-          const start = performance.now();
-          if (readUsingBatch) {
-            let lastDoc = undefined;
-            let done = false;
-            let result = [];
-            while (done === false) {
-              await new Promise<void>((subResolve) => {
-                const range = IDBKeyRange.lowerBound(
-                  lastDoc ? lastDoc.msgId : "",
-                  true
-                );
-                const openCursorReq = objectStore.getAll(range, readBatchSize);
-                openCursorReq.onerror = function () {
-                  reject(
-                    patchDOMException(openCursorReq.error!, {
-                      tags: ["idb", "read-all", "n-transaction", "batch"],
-                    })
-                  );
-                };
-                openCursorReq.onsuccess = function () {
-                  const subResult = openCursorReq.result;
-                  lastDoc = lastOfArray(subResult);
-                  if (subResult.length === 0) {
-                    done = true;
-                    const end = performance.now();
 
-                    const resultLength = result.length;
-                    if (resultLength !== datasetSize) {
-                      console.error(
-                        "[idb][read-all][n-transaction][batch] insufficient full traverse",
-                        {
-                          resultLength,
-                          datasetSize,
-                        }
-                      );
-                    }
-                    resolve(end - start);
-                  } else result.concat(subResult);
-                  subResolve();
-                };
-              });
-            }
-          } else {
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      Array.from({ length: readAllCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(TABLE_NAME);
             const readReq = objectStore.getAll();
             readReq.onsuccess = function () {
-              const end = performance.now();
-
               const result = readReq.result;
-              const resultLength = result.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[idb][read-all][n-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              resolve(end - start);
+
+              if (checksumData[countIndex] === undefined)
+                checksumData[countIndex] = [];
+              checksumData[countIndex].push(
+                ...result.map(({ msgId }) => msgId)
+              );
+
+              resolve();
             };
             readReq.onerror = function () {
               reject(
@@ -103,17 +59,17 @@ const originalExecute = async (
                 })
               );
             };
-          }
-        })
-      );
-    }
-    const start = performance.now();
-    const results = await Promise.all(requests);
+          })
+      )
+    );
     const end = performance.now();
+
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readAllCount;
+
+    verifyReadAll(checksumData, datasetSize, readAllCount);
+
     removeLog(logId);
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readAllCount;
   }
   //#endregion
 
@@ -124,45 +80,43 @@ const originalExecute = async (
       durability,
     });
     const objectStore = transaction.objectStore(TABLE_NAME);
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readAllCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          const readReq = objectStore.getAll();
-          readReq.onsuccess = function () {
-            const result = readReq.result;
-            const resultLength = result.length;
-            if (resultLength !== datasetSize) {
-              console.error(
-                "[idb][read-all][one-transaction] insufficient full traverse",
-                {
-                  resultLength,
-                  datasetSize,
-                }
-              );
-            }
-            const end = performance.now();
-            resolve(end - start);
-          };
-          readReq.onerror = function () {
-            reject(
-              patchDOMException(readReq.error!, {
-                tags: ["idb", "read-all", "one-transaction"],
-              })
-            );
-          };
-        })
-      );
-    }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(
+      Array.from({ length: readAllCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const readReq = objectStore.getAll();
+            readReq.onsuccess = function () {
+              const result = readReq.result;
+
+              if (checksumData[countIndex] === undefined)
+                checksumData[countIndex] = [];
+              checksumData[countIndex].push(
+                ...result.map(({ msgId }) => msgId)
+              );
+
+              resolve();
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-all", "one-transaction"],
+                })
+              );
+            };
+          })
+      )
+    );
     const end = performance.now();
+
     oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readAllCount;
-	
+    oneTransactionAverage = oneTransactionSum / readAllCount;
+
+    verifyReadAll(checksumData, datasetSize, readAllCount);
+
     removeLog(logId);
   }
   //#endregion

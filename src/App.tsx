@@ -49,6 +49,7 @@ import { LogObj } from "./types/shared/logs";
 import { ActionTypes } from "./constants/action-types";
 import { MessageTypes } from "./constants/message";
 import { AddLogMessageResult } from "./types/shared/message-port";
+import './bootstrap/global';
 
 let logIdCounter = 0;
 

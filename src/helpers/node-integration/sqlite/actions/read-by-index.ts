@@ -10,6 +10,7 @@ import { openSQLiteDatabase } from "../common";
 import { addLog, removeLog } from "../../log";
 import { ReadByIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
+import { verifyReadByIndexField } from "../../../shared/verify-results";
 
 const originalExecute = async (
   readUsingBatch: boolean,
@@ -27,57 +28,94 @@ const originalExecute = async (
 
   //#region n transaction
   {
-    const requests = keys.map((key, index) => {
-      const params: any[] = [key];
-      const indexedKeyConditions: string[] = [];
-      INDEXED_KEYS.forEach((key) => {
-        indexedKeyConditions.push(`${escapeStr(key)} =?`);
-      });
-      const query = `SELECT * FROM ${escapeStr(
-        TABLE_NAME
-      )} INDEXED BY ${escapeStr(INDEX_NAME)} WHERE ${indexedKeyConditions.join(
-        " AND "
-      )}`;
-      return new Promise<number>((resolve, reject) => {
-        const addLogRequest = addLog(
-          `[nodeIntegration-sqlite][read-by-index][n-transaction] index ${index}`
-        );
-        const start = performance.now();
-        conn.all(query, params, (error, rows) => {
-          if (error)
-            reject(
-              patchJSError(error, {
-                tags: [
-                  "nodeIntegration-sqlite",
-                  "read-by-index",
-                  "n-transaction",
-                  `index ${index}`,
-                ],
-              })
-            );
-          else {
-            const end = performance.now();
-            const resultLength = rows.length;
-            resolve(end - start);
-          }
-          addLogRequest.then((logId) => removeLog(logId));
+    const addLogRequest = addLog(
+      `[nodeIntegration-sqlite][read-by-index][n-transaction] read`
+    );
+
+    const requestsData: Array<{ query: string; params: any }> = keys.map(
+      (key, index) => {
+        const params: any[] = [key];
+        const indexedKeyConditions: string[] = [];
+        INDEXED_KEYS.forEach((key) => {
+          indexedKeyConditions.push(`${escapeStr(key)} =?`);
         });
-      });
-    });
+        const query = `SELECT * FROM ${escapeStr(
+          TABLE_NAME
+        )} INDEXED BY ${escapeStr(
+          INDEX_NAME
+        )} WHERE ${indexedKeyConditions.join(" AND ")}`;
+
+        return { query, params };
+      }
+    );
+
+    const checksumData: Array<number> = [];
+
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(
+      requestsData.map(
+        ({ query, params }, keyIndex) =>
+          new Promise<void>((resolve, reject) => {
+            conn.all(query, params, (error, rows) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: [
+                      "nodeIntegration-sqlite",
+                      "read-by-index",
+                      "n-transaction",
+                    ],
+                  })
+                );
+              else {
+                if (rows) {
+                  const resultLength = rows.length;
+
+                  if (checksumData[keyIndex] === undefined)
+                    checksumData[keyIndex] = 0;
+                  checksumData[keyIndex] += resultLength;
+                }
+                resolve();
+              }
+            });
+          })
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
-
-    nTransactionSum = results.reduce((result, current) => result + current, 0);
     nTransactionAverage = nTransactionSum / numOfKeys;
+
+    verifyReadByIndexField(checksumData, keys);
+
+    addLogRequest.then((logId) => removeLog(logId));
   }
   //#endregion
 
   //#region one transaction
   {
-    const results: number[] = [];
-	const start = performance.now();
+    const addLogRequest = addLog(
+      `[nodeIntegration-sqlite][read-by-index][one-transaction] read`
+    );
+
+    const requestsData: Array<{ query: string; params: any }> = keys.map(
+      (key) => {
+        const params: any[] = [key];
+        const indexedKeyConditions: string[] = [];
+        INDEXED_KEYS.forEach((key) => {
+          indexedKeyConditions.push(`${escapeStr(key)} =?`);
+        });
+        const query = `SELECT * FROM ${escapeStr(
+          TABLE_NAME
+        )} INDEXED BY ${escapeStr(
+          INDEX_NAME
+        )} WHERE ${indexedKeyConditions.join(" AND ")}`;
+        return { query, params };
+      }
+    );
+
+    const checksumData: Array<number> = [];
+
+    const start = performance.now();
     await new Promise<void>((resolve, reject) => {
       conn.serialize(() => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -94,22 +132,7 @@ const originalExecute = async (
             );
         });
 
-        for (let index = 0; index < numOfKeys; index += 1) {
-          const key = keys[index];
-          const params: any[] = [key];
-          const indexedKeyConditions: string[] = [];
-          INDEXED_KEYS.forEach((key) => {
-            indexedKeyConditions.push(`${escapeStr(key)} =?`);
-          });
-          const query = `SELECT * FROM ${escapeStr(
-            TABLE_NAME
-          )} INDEXED BY ${escapeStr(
-            INDEX_NAME
-          )} WHERE ${indexedKeyConditions.join(" AND ")}`;
-          const addLogRequest = addLog(
-            `[nodeIntegration-sqlite][read-by-index][one-transaction] index ${index}`
-          );
-          const start = performance.now();
+        requestsData.forEach(({ query, params }, keyIndex) => {
           conn.all(query, params, (error, rows) => {
             if (error) {
               reject(
@@ -118,17 +141,18 @@ const originalExecute = async (
                     "nodeIntegration-sqlite",
                     "read-by-index",
                     "1-transaction",
-                    `index ${index}`,
                   ],
                 })
               );
             } else {
-              const end = performance.now();
-              results.push(end - start);
+              if (rows) {
+                if (checksumData[keyIndex] === undefined)
+                  checksumData[keyIndex] = 0;
+                checksumData[keyIndex] += rows.length;
+              }
             }
-            addLogRequest.then((logId) => removeLog(logId));
           });
-        }
+        });
 
         conn.run("COMMIT TRANSACTION", (error) => {
           if (error)
@@ -146,14 +170,14 @@ const originalExecute = async (
         });
       });
     });
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce(
-      (result, current) => result + current,
-      0
-    );
-    oneTransactionAverage = accumulateSum / numOfKeys;
+    const end = performance.now();
+
+    oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / numOfKeys;
+
+    verifyReadByIndexField(checksumData, keys);
+
+    addLogRequest.then((logId) => removeLog(logId));
   }
   //#endregion
 

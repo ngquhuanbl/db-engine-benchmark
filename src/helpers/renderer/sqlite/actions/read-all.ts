@@ -5,6 +5,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadAllResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadAll } from "../../../shared/verify-results";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -28,43 +29,40 @@ const originalExecute = async (
       "[preloaded-sqlite][read-all][n-transaction] read all"
     );
     const query = `SELECT * FROM ${escapeStr(TABLE_NAME)}`;
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < readAllCount; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: ["preload-sqlite", "read-all", "n-transaction"],
-                })
-              );
-            else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (rows.length !== datasetSize) {
-                console.error(
-                  "[preloaded-sqlite][read-all][n-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
-              }
-              resolve(end - start);
-            }
-          });
-        })
-      );
-    }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    const results = await Promise.all(requests);
+    await Promise.all(
+      Array.from({ length: readAllCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            conn.all(query, undefined, (error, rows) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: ["preload-sqlite", "read-all", "n-transaction"],
+                  })
+                );
+              else {
+                if (rows) {
+                  if (checksumData[countIndex] === undefined)
+                    checksumData[countIndex] = [];
+                  checksumData[countIndex].push(
+                    ...rows.map(({ msgId }) => msgId)
+                  );
+                }
+                resolve();
+              }
+            });
+          })
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readAllCount;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readAllCount;
+    verifyReadAll(checksumData, datasetSize, readAllCount);
 
     removeLog(logId);
   }
@@ -72,12 +70,14 @@ const originalExecute = async (
 
   //#region one transaction
   {
+    const logId = addLog(
+      "[preloaded-sqlite][read-all][one-transaction] read all"
+    );
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
-      const logId = addLog(
-        "[preloaded-sqlite][read-all][one-transaction] read all"
-      );
+    await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
@@ -105,18 +105,10 @@ const originalExecute = async (
                 })
               );
             } else {
-              const end = performance.now();
-              const resultLength = rows.length;
-              if (resultLength !== datasetSize) {
-                console.error(
-                  "[preloaded-sqlite][read-all][one-transaction] insufficient full traverse",
-                  {
-                    resultLength,
-                    datasetSize,
-                  }
-                );
+              if (rows) {
+                if (checksumData[i] === undefined) checksumData[i] = [];
+                checksumData[i].push(...rows.map(({ msgId }) => msgId));
               }
-              results.push(end - start);
             }
           });
         }
@@ -134,16 +126,18 @@ const originalExecute = async (
                 ],
               })
             );
-          else resolve(results);
-          removeLog(logId);
+          else resolve();
         });
       });
     });
-	const end = performance.now();
-	oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readAllCount;
+    const end = performance.now();
+
+    oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / readAllCount;
+
+    verifyReadAll(checksumData, datasetSize, readAllCount);
+
+    removeLog(logId);
   }
   //#endregion
 

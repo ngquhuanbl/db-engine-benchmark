@@ -9,14 +9,15 @@ import { SingleReadWriteResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadSingleItem } from "../../../shared/verify-results";
 import { openSQLiteDatabase, resetSQLiteData } from "../common";
 
 const originalExecute = async (
-	datasetSize: number,
-	readUsingBatch: boolean,
-	readBatchSize: number,
-	addLog: (content: string) => number,
-	removeLog: (id: number) => void
+  datasetSize: number,
+  readUsingBatch: boolean,
+  readBatchSize: number,
+  addLog: (content: string) => number,
+  removeLog: (id: number) => void
 ): Promise<SingleReadWriteResult> => {
   const conn = await openSQLiteDatabase();
 
@@ -40,7 +41,8 @@ const originalExecute = async (
     const logId = addLog(
       "[preloaded-sqlite][single-read-write][n-transaction] write"
     );
-    const requests: Promise<void>[] = [];
+
+    const requestsData: Array<{ query: string; params: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const params: any = {};
@@ -52,7 +54,9 @@ const originalExecute = async (
         const jsValue = jsData[name];
 
         if (type === "TEXT") {
-          params[`$${name}`] = JSON.stringify(jsValue);
+          if (typeof jsValue !== "string")
+            params[`$${name}`] = JSON.stringify(jsValue);
+          else params[`$${name}`] = jsValue;
         } else {
           params[`$${name}`] = jsValue;
         }
@@ -61,27 +65,31 @@ const originalExecute = async (
       const query = `INSERT OR REPLACE INTO ${escapeStr(
         TABLE_NAME
       )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          conn.run(query, params, (error) =>
-            error
-              ? reject(
-                  patchJSError(error, {
-                    tags: ["preload-sqlite", "n-transaction", "write"],
-                  })
-                )
-              : resolve()
-          );
-        })
-      );
+      requestsData.push({ query, params });
     }
+
     const start = performance.now();
-    let end = -1;
-    await Promise.all(requests).finally(() => {
-      end = performance.now();
-      removeLog(logId);
-    });
+    await Promise.all(
+      requestsData.map(
+        ({ query, params }) =>
+          new Promise<void>((resolve, reject) => {
+            conn.run(query, params, (error) =>
+              error
+                ? reject(
+                    patchJSError(error, {
+                      tags: ["preload-sqlite", "n-transaction", "write"],
+                    })
+                  )
+                : resolve()
+            );
+          })
+      )
+    );
+    const end = performance.now();
+
     nTransactionWrite = end - start;
+
+    removeLog(logId);
   }
 
   // READ
@@ -89,7 +97,8 @@ const originalExecute = async (
     const logId = addLog(
       "[preloaded-sqlite][single-read-write][n-transaction] read"
     );
-    const requests: Promise<void>[] = [];
+
+    const requestsData: Array<{ query: string; params: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const params: any[] = [];
@@ -102,28 +111,40 @@ const originalExecute = async (
       const query = `SELECT * FROM ${escapeStr(
         TABLE_NAME
       )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+      requestsData.push({ query, params });
+    }
 
-      requests.push(
-        new Promise<void>((resolve, reject) => {
-          conn.get(query, params, (error) =>
-            error
-              ? reject(
+    const checksumData: Array<string> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      requestsData.map(
+        ({ query, params }) =>
+          new Promise<void>((resolve, reject) => {
+            conn.get(query, params, (error, row) => {
+              if (error) {
+                reject(
                   patchJSError(error, {
                     tags: ["preload-sqlite", "n-transaction", "read"],
                   })
-                )
-              : resolve()
-          );
-        })
-      );
-    }
-    const start = performance.now();
-    let end = -1;
-    await Promise.all(requests).finally(() => {
-      end = performance.now();
-      removeLog(logId);
-    });
+                );
+              } else {
+                if (row) {
+                  checksumData.push(row.msgId);
+                }
+                resolve();
+              }
+            });
+          })
+      )
+    );
+    const end = performance.now();
+
     nTransactionRead = end - start;
+
+    verifyReadSingleItem(checksumData, datasetSize);
+
+    removeLog(logId);
   }
 
   //#endregion
@@ -140,8 +161,35 @@ const originalExecute = async (
     const logId = addLog(
       "[preloaded-sqlite][single-read-write][one-transaction] write"
     );
+
+    const requestsData: Array<{ query: string; params: any }> = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const jsData = getData(i);
+      const params: any = {};
+      const fieldList: string[] = [];
+      const valuesPlaceholder: string[] = [];
+      COLUMN_LIST_INFO.forEach(({ name, type }) => {
+        fieldList.push(name);
+        valuesPlaceholder.push(`$${name}`);
+        const jsValue = jsData[name];
+
+        if (type === "TEXT") {
+          if (typeof jsValue !== "string")
+            params[`$${name}`] = JSON.stringify(jsValue);
+          else params[`$${name}`] = jsValue;
+        } else {
+          params[`$${name}`] = jsValue;
+        }
+      });
+
+      const query = `INSERT OR REPLACE INTO ${escapeStr(
+        TABLE_NAME
+      )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+
+      requestsData.push({ query, params });
+    }
+
     const start = performance.now();
-    let end = -1;
     await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -157,28 +205,8 @@ const originalExecute = async (
               })
             );
         });
-        for (let i = 0; i < datasetSize; i += 1) {
-          const jsData = getData(i);
-          const params: any = {};
-          const fieldList: string[] = [];
-          const valuesPlaceholder: string[] = [];
-          COLUMN_LIST_INFO.forEach(({ name, type }) => {
-            fieldList.push(name);
-            valuesPlaceholder.push(`$${name}`);
-            const jsValue = jsData[name];
 
-            if (type === "TEXT") {
-              if (typeof jsValue !== "string")
-                params[`$${name}`] = JSON.stringify(jsValue);
-              else params[`$${name}`] = jsValue;
-            } else {
-              params[`$${name}`] = jsValue;
-            }
-          });
-
-          const query = `INSERT OR REPLACE INTO ${escapeStr(
-            TABLE_NAME
-          )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+        requestsData.forEach(({ query, params }) => {
           conn.run(query, params, (error) => {
             if (error)
               reject(
@@ -187,7 +215,7 @@ const originalExecute = async (
                 })
               );
           });
-        }
+        });
 
         conn.run("COMMIT TRANSACTION", (error) => {
           if (error)
@@ -204,11 +232,12 @@ const originalExecute = async (
           else resolve();
         });
       });
-    }).finally(() => {
-      end = performance.now();
-      removeLog(logId);
     });
+    const end = performance.now();
+
     oneTransactionWrite = end - start;
+
+    removeLog(logId);
   }
 
   // READ
@@ -216,8 +245,27 @@ const originalExecute = async (
     const logId = addLog(
       "[preloaded-sqlite][single-read-write][one-transaction] read"
     );
+
+    const requestsData: Array<{ query: string; params: any }> = [];
+    for (let i = 0; i < datasetSize; i += 1) {
+      const jsData = getData(i);
+      const params: any[] = [];
+      const primaryKeyConditions: string[] = [];
+      PRIMARY_KEYS.forEach((key) => {
+        primaryKeyConditions.push(`${escapeStr(key)}=?`);
+        params.push(jsData[key]);
+      });
+
+      const query = `SELECT * FROM ${escapeStr(
+        TABLE_NAME
+      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+
+      requestsData.push({ query, params });
+    }
+
+    const checksumData: Array<string> = [];
+
     const start = performance.now();
-    let end = -1;
     await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
@@ -233,28 +281,22 @@ const originalExecute = async (
               })
             );
         });
-        for (let i = 0; i < datasetSize; i += 1) {
-          const jsData = getData(i);
-          const params: any[] = [];
-          const primaryKeyConditions: string[] = [];
-          PRIMARY_KEYS.forEach((key) => {
-            primaryKeyConditions.push(`${escapeStr(key)}=?`);
-            params.push(jsData[key]);
-          });
 
-          const query = `SELECT * FROM ${escapeStr(
-            TABLE_NAME
-          )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-
-          conn.get(query, params, (error) => {
+        requestsData.forEach(({ query, params }) => {
+          conn.get(query, params, (error, row) => {
             if (error)
               reject(
                 patchJSError(error, {
                   tags: ["preload-sqlite", "1-transaction", "read"],
                 })
               );
+            else {
+              if (row) {
+                checksumData.push(row.msgId);
+              }
+            }
           });
-        }
+        });
 
         conn.run("COMMIT TRANSACTION", (error) => {
           if (error)
@@ -271,11 +313,14 @@ const originalExecute = async (
           else resolve();
         });
       });
-    }).finally(() => {
-      end = performance.now();
-      removeLog(logId);
     });
+    const end = performance.now();
+
     oneTransactionRead = end - start;
+
+    verifyReadSingleItem(checksumData, datasetSize);
+
+    removeLog(logId);
   }
 
   //#endregion

@@ -8,6 +8,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByLimitResult } from "../../../../types/shared/result";
 import { escapeStr } from "../../../shared/escape-str";
 import { patchJSError } from "../../../shared/patch-error";
+import { verifyReadByLimit } from "../../../shared/verify-results";
 import { openSQLiteDatabase } from "../common";
 
 const originalExecute = async (
@@ -32,34 +33,43 @@ const originalExecute = async (
     const logId = addLog(
       "[preloaded-sqlite][read-by-limit][n-transaction] read"
     );
-    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
-    const requests: Promise<number>[] = [];
-    for (let i = 0; i < count; i += 1) {
-      requests.push(
-        new Promise<number>((resolve, reject) => {
-          const start = performance.now();
-          conn.all(query, undefined, (error, rows) => {
-            if (error)
-              reject(
-                patchJSError(error, {
-                  tags: ["preload-sqlite", "read-by-limit", "n-transaction"],
-                })
-              );
-            else {
-              const end = performance.now();
-              resolve(end - start);
-            }
-          });
-        })
-      );
-    }
-    const start = performance.now();
-    const results = await Promise.all(requests);
-    const end = performance.now();
-    nTransactionSum = end - start;
 
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / count;
+    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      Array.from({ length: count }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            conn.all(query, undefined, (error, rows) => {
+              if (error)
+                reject(
+                  patchJSError(error, {
+                    tags: ["preload-sqlite", "read-by-limit", "n-transaction"],
+                  })
+                );
+              else {
+                if (rows) {
+                  if (checksumData[countIndex] === undefined)
+                    checksumData[countIndex] = [];
+                  checksumData[countIndex].push(
+                    ...rows.map(({ msgId }) => msgId)
+                  );
+                }
+                resolve();
+              }
+            });
+          })
+      )
+    );
+    const end = performance.now();
+
+    nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / count;
+
+    verifyReadByLimit(checksumData, count, limit);
 
     removeLog(logId);
   }
@@ -67,12 +77,16 @@ const originalExecute = async (
 
   //#region one transaction
   {
-	const start = performance.now()
-    const results = await new Promise<number[]>((resolve, reject) => {
-      const results: number[] = [];
-      const logId = addLog(
-        "[preloaded-sqlite][read-by-limit][one-transaction] read"
-      );
+    const logId = addLog(
+      "[preloaded-sqlite][read-by-limit][one-transaction] read"
+    );
+
+    const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await new Promise<void>((resolve, reject) => {
       conn.serialize((conn) => {
         conn.run("BEGIN TRANSACTION", (error) => {
           if (error)
@@ -89,8 +103,6 @@ const originalExecute = async (
         });
 
         for (let i = 0; i < count; i += 1) {
-          const query = `SELECT * FROM ${escapeStr(TABLE_NAME)} LIMIT ${limit}`;
-          const start = performance.now();
           conn.all(query, undefined, (error, rows) => {
             if (error) {
               reject(
@@ -99,8 +111,10 @@ const originalExecute = async (
                 })
               );
             } else {
-              const end = performance.now();
-              results.push(end - start);
+              if (rows) {
+                if (checksumData[i] === undefined) checksumData[i] = [];
+                checksumData[i].push(...rows.map(({ msgId }) => msgId));
+              }
             }
           });
         }
@@ -117,16 +131,18 @@ const originalExecute = async (
                 ],
               })
             );
-          else resolve(results);
-          removeLog(logId);
+          else resolve();
         });
       });
     });
     const end = performance.now();
+
     oneTransactionSum = end - start;
-	
-    const accumulateSum = results.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / count;
+    oneTransactionAverage = oneTransactionSum / count;
+
+    verifyReadByLimit(checksumData, count, limit);
+
+    removeLog(logId);
   }
   //#endregion
 
