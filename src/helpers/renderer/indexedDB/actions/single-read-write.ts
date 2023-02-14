@@ -2,7 +2,6 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
 import {
   getAllPossibleConvIds,
-  getConvId,
   getData,
 } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
@@ -45,7 +44,7 @@ const originalExecute = async (
     const requestsData: Array<{ fullname: string; item: any }> = [];
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
-      const partitionKey = getConvId(i);
+      const partitionKey = item.toUid;
       const fullname = getTableFullname(partitionKey);
       requestsData.push({ fullname, item });
     }

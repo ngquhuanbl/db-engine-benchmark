@@ -32,101 +32,67 @@ const originalExecute = async (
     const addLogRequest = addLog(
       "[nodeIntegration-sqlite][read-from-end-source][n-transaction] read"
     );
+
+    const requestsData: Array<{ partitionKeys: string[] }> = [];
+    for (let i = 0; i < readFromEndSourceCount; i += 1) {
+      if (PARTITION_MODE) {
+        requestsData.push({
+          partitionKeys: [SELECTED_PARTITION_KEY],
+        });
+      } else {
+        requestsData.push({
+          partitionKeys: [...allPartitionKeys],
+        });
+      }
+    }
+
     const query = `SELECT * FROM ${escapeStr(
       TABLE_NAME
     )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
       " , "
     )}`;
-    const durations: number[] = [];
-    const countRequests: Promise<void>[] = [];
-    const results: Array<string[]> = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      if (PARTITION_MODE) {
-        countRequests.push(
-          new Promise((resolve, reject) => {
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
-            DB.getConnectionForConv(SELECTED_PARTITION_KEY).then((conn) =>
-              conn.all(query, undefined, (error) => {
-                finish();
-                if (error)
-                  reject(
-                    patchJSError(error, {
-                      tags: [
-                        "nodeIntegration-sqlite",
-                        "read-from-end-source",
-                        "n-transaction",
-                      ],
-                    })
-                  );
-                else {
-                  // No need to do checksum since we only traverse one partition
-                  resolve();
-                }
-              })
-            );
-          })
-        );
-      } else {
-        let resultLength = 0;
-        const partitionRequests = allPartitionKeys.map(
-          (partitionKey) =>
-            new Promise<void>((resolve, reject) => {
-              const start = performance.now();
-              const finish = () => {
-                const end = performance.now();
-                durations.push(end - start);
-              };
-              DB.getConnectionForConv(partitionKey).then((conn) => {
-                conn.all(query, undefined, (error, rows) => {
-                  finish();
-                  if (error)
-                    reject(
-                      patchJSError(error, {
-                        tags: [
-                          "nodeIntegration-sqlite",
-                          "read-from-end-source",
-                          "n-transaction",
-                        ],
-                      })
-                    );
-                  else {
-                    resultLength += rows.length;
-                    if (results[i] === undefined) results[i] = [];
-                    results[i].push(...rows.map(({ msgId }) => msgId));
-                    resolve();
-                  }
-                });
-              });
-            })
-        );
-        countRequests.push(
-          Promise.all(partitionRequests).then(() => {
-            if (resultLength !== datasetSize) {
-              console.error(
-                "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
-                {
-                  resultLength,
-                  datasetSize,
-                }
-              );
-            }
-          })
-        );
-      }
-    }
+
+    const checksumData: Array<string[]> = [];
+
     const start = performance.now();
-    await Promise.all(countRequests).then(() => {
-		verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount)
-	});
+    await Promise.all(
+      requestsData.map(({ partitionKeys }, countIndex) =>
+        Promise.all(
+          partitionKeys.map(
+            (partitionKey) =>
+              new Promise<void>((resolve, reject) => {
+                DB.getConnectionForConv(partitionKey).then((conn) => {
+                  conn.all(query, undefined, (error, rows) => {
+                    if (error)
+                      reject(
+                        patchJSError(error, {
+                          tags: [
+                            "nodeIntegration-sqlite",
+                            "read-from-end-source",
+                            "n-transaction",
+                          ],
+                        })
+                      );
+                    else {
+                      if (checksumData[countIndex] === undefined)
+                        checksumData[countIndex] = [];
+                      checksumData[countIndex].push(
+                        ...rows.map(({ msgId }) => msgId)
+                      );
+                      resolve();
+                    }
+                  });
+                });
+              })
+          )
+        )
+      )
+    );
     const end = performance.now();
     nTransactionSum = end - start;
+    nTransactionAverage = nTransactionSum / readFromEndSourceCount;
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    nTransactionAverage = accumulateSum / readFromEndSourceCount;
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
 
     addLogRequest.then((logId) => removeLog(logId));
   }
@@ -134,86 +100,30 @@ const originalExecute = async (
 
   //#region one transaction
   {
-    const durations: number[] = [];
     const addLogRequest = addLog(
       "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
     );
-	const results: Array<string[]> = [];
-    const start = performance.now();
+
+    const query = `SELECT * FROM ${escapeStr(
+      TABLE_NAME
+    )} ORDER BY ${PRIMARY_KEYS.map((key) => `${escapeStr(key)} DESC`).join(
+      " , "
+    )}`;
+
+    const partitionKeys: string[] = [];
     if (PARTITION_MODE) {
-      await new Promise<void>((resolve, reject) => {
-        const start = performance.now();
-        const finish = () => {
-          const end = performance.now();
-          durations.push(end - start);
-        };
-        DB.getConnectionForConv(SELECTED_PARTITION_KEY).then((conn) =>
-          conn.serialize((conn) => {
-            conn.run("BEGIN TRANSACTION", (error) => {
-              if (error)
-                reject(
-                  patchJSError(error, {
-                    tags: [
-                      "nodeIntegration-sqlite",
-                      "read-from-end-source",
-                      "1-transaction",
-                      "begin-transaction",
-                    ],
-                  })
-                );
-            });
-
-            for (let i = 0; i < readFromEndSourceCount; i += 1) {
-              const query = `SELECT * FROM ${escapeStr(
-                TABLE_NAME
-              )} ORDER BY ${PRIMARY_KEYS.map(
-                (key) => `${escapeStr(key)} DESC`
-              ).join(" , ")}`;
-              conn.all(query, undefined, (error) => {
-                if (error) {
-                  reject(
-                    patchJSError(error, {
-                      tags: [
-                        "nodeIntegration-sqlite",
-                        "read-from-end-source",
-                        "1-transaction",
-                      ],
-                    })
-                  );
-                } else {
-                  // No need to do checksum since we only visit one partition
-                }
-              });
-            }
-
-            conn.run("COMMIT TRANSACTION", (error) => {
-              finish();
-              if (error)
-                reject(
-                  patchJSError(error, {
-                    tags: [
-                      "nodeIntegration-sqlite",
-                      "read-from-end-source",
-                      "1-transaction",
-                      "commit-transaction",
-                    ],
-                  })
-                );
-              else resolve();
-            });
-          })
-        );
-      });
+      partitionKeys.push(SELECTED_PARTITION_KEY);
     } else {
-      let resultLengths: Record<number, number> = {};
-      const partitionRequests = allPartitionKeys.map(
+      partitionKeys.push(...allPartitionKeys);
+    }
+
+    const checksumData: Array<string[]> = [];
+
+    const start = performance.now();
+    await Promise.all(
+      partitionKeys.map(
         (partitionKey) =>
           new Promise<void>((resolve, reject) => {
-            const start = performance.now();
-            const finish = () => {
-              const end = performance.now();
-              durations.push(end - start);
-            };
             DB.getConnectionForConv(partitionKey).then((conn) => {
               conn.serialize((conn) => {
                 conn.run("BEGIN TRANSACTION", (error) => {
@@ -231,11 +141,6 @@ const originalExecute = async (
                 });
 
                 for (let i = 0; i < readFromEndSourceCount; i += 1) {
-                  const query = `SELECT * FROM ${escapeStr(
-                    TABLE_NAME
-                  )} ORDER BY ${PRIMARY_KEYS.map(
-                    (key) => `${escapeStr(key)} DESC`
-                  ).join(" , ")}`;
                   conn.all(query, undefined, (error, rows) => {
                     if (error) {
                       reject(
@@ -248,17 +153,13 @@ const originalExecute = async (
                         })
                       );
                     } else {
-                      if (resultLengths[i] === undefined) resultLengths[i] = 0;
-                      resultLengths[i] += rows.length;
-					  
-					  if (results[i] === undefined) results[i] = [];
-					  results[i].push(...rows.map(({ msgId }) => msgId))
+                      if (checksumData[i] === undefined) checksumData[i] = [];
+                      checksumData[i].push(...rows.map(({ msgId }) => msgId));
                     }
                   });
                 }
 
                 conn.run("COMMIT TRANSACTION", (error) => {
-                  finish();
                   if (error)
                     reject(
                       patchJSError(error, {
@@ -275,30 +176,15 @@ const originalExecute = async (
               });
             });
           })
-      );
-      await Promise.all(partitionRequests);
-
-      for (const resultLength of Object.values(resultLengths)) {
-        if (resultLength !== datasetSize) {
-          console.error(
-            "[nodeIntegration-sqlite][read-from-end-source][n-transaction] insufficient full traverse",
-            {
-              resultLength,
-              datasetSize,
-            }
-          );
-        }
-      }
-	  
-	  verifyReadFromEndSource(results, datasetSize, +readFromEndSourceCount)
-    }
-
-    addLogRequest.then((logId) => removeLog(logId));
+      )
+    );
     const end = performance.now();
     oneTransactionSum = end - start;
+    oneTransactionAverage = oneTransactionSum / readFromEndSourceCount;
 
-    const accumulateSum = durations.reduce((res, current) => res + current, 0);
-    oneTransactionAverage = accumulateSum / readFromEndSourceCount;
+    verifyReadFromEndSource(checksumData, datasetSize, readFromEndSourceCount);
+
+    addLogRequest.then((logId) => removeLog(logId));
   }
   //#endregion
 

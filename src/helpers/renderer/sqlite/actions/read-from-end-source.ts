@@ -29,7 +29,7 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog(
-      "[nodeIntegration-sqlite][read-from-end-source][n-transaction] read"
+      "[preloaded-sqlite][read-from-end-source][n-transaction] read"
     );
 
     const requestsData: Array<{ partitionKeys: string[] }> = [];
@@ -66,7 +66,7 @@ const originalExecute = async (
                       reject(
                         patchJSError(error, {
                           tags: [
-                            "nodeIntegration-sqlite",
+                            "preloaded-sqlite",
                             "read-from-end-source",
                             "n-transaction",
                           ],
@@ -100,7 +100,7 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog(
-      "[nodeIntegration-sqlite][read-from-end-source][one-transaction] read"
+      "[preloaded-sqlite][read-from-end-source][one-transaction] read"
     );
 
     const query = `SELECT * FROM ${escapeStr(
@@ -130,7 +130,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-from-end-source",
                           "1-transaction",
                           "begin-transaction",
@@ -145,7 +145,7 @@ const originalExecute = async (
                       reject(
                         patchJSError(error, {
                           tags: [
-                            "nodeIntegration-sqlite",
+                            "preloaded-sqlite",
                             "read-from-end-source",
                             "1-transaction",
                           ],
@@ -163,7 +163,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-from-end-source",
                           "1-transaction",
                           "commit-transaction",

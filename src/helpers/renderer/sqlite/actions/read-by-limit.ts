@@ -32,7 +32,7 @@ const originalExecute = async (
   //#region n transaction
   {
     const logId = addLog(
-      "[nodeIntegration-sqlite][read-by-limit][n-transaction] read"
+      "[preloaded-sqlite][read-by-limit][n-transaction] read"
     );
 
     const requestsData: Array<{ partitionKeys: string[] }> = [];
@@ -64,7 +64,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "nodeIntegration-sqlite",
+                          "preloaded-sqlite",
                           "read-by-limit",
                           "n-transaction",
                         ],
@@ -105,7 +105,7 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog(
-      "[nodeIntegration-sqlite][read-by-limit][one-transaction] read"
+      "[preloaded-sqlite][read-by-limit][one-transaction] read"
     );
     const partitionKeys: string[] = [];
     if (PARTITION_MODE) partitionKeys.push(SELECTED_PARTITION_KEY);
@@ -127,7 +127,7 @@ const originalExecute = async (
                 reject(
                   patchJSError(error, {
                     tags: [
-                      "nodeIntegration-sqlite",
+                      "preloaded-sqlite",
                       "read-by-limit",
                       "1-transaction",
                       "begin-transaction",
@@ -145,7 +145,7 @@ const originalExecute = async (
                   reject(
                     patchJSError(error, {
                       tags: [
-                        "nodeIntegration-sqlite",
+                        "preloaded-sqlite",
                         "read-by-limit",
                         "1-transaction",
                       ],
@@ -176,7 +176,7 @@ const originalExecute = async (
                 reject(
                   patchJSError(error, {
                     tags: [
-                      "nodeIntegration-sqlite",
+                      "preloaded-sqlite",
                       "read-by-limit",
                       "1-transaction",
                       "commit-transaction",
