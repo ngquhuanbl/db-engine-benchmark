@@ -43,8 +43,8 @@ import {
   listenToGetAllEvent,
   listenToRunAllEvent,
 } from "../helpers/shared/events";
-import { readFromEndSourceCount as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
-import { readFromEndSourceCount as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { readFromEndSource as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
+import { readFromEndSource as executePreloadedSQLite } from "../helpers/renderer/preload/actions";
 import { readFromEndSourceCount as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 import { Entries, Keys } from "../types/shared/common";
 import { ReadFromEndSourceResult } from "../types/shared/result";

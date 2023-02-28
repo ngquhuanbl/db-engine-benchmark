@@ -44,7 +44,7 @@ import {
   listenToRunAllEvent,
 } from "../helpers/shared/events";
 import { readByNonIndex as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
-import { readByNonIndex as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { readByNonIndex as executePreloadedSQLite } from "../helpers/renderer/preload/actions";
 import { readByNonIndex as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 
 import { Entries, Keys } from "../types/shared/common";

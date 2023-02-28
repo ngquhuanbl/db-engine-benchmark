@@ -50,10 +50,12 @@ import { ActionTypes } from "./constants/action-types";
 import { MessageTypes } from "./constants/message";
 import { AddLogMessageResult } from "./types/shared/message-port";
 import './bootstrap/global';
+import './helpers/shared/execute';
 
 let logIdCounter = 0;
 
 function App() {
+	return null;
   const [datasetSize, setDatasetSize] = useState(DEFAULT_DATASET_SIZE);
   const [benchmarkCount, setBenchmarkCount] = useState(DEFAULT_BENCHMARK_COUNT);
   const [readBatchSize, setReadBatchSize] = useState(DEFAULT_READ_BATCH_SIZE);

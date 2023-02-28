@@ -56,8 +56,7 @@ class Database {
           if (err) {
             reject(err);
           } else {
-			const statement = setSqlcipherKey(`"secretkey"`);
-            conn.exec(statement, (err) => {
+            conn.exec(setSqlcipherKey("secretkey"), (err) => {
               if (err) {
                 reject(err);
               } else {
@@ -256,63 +255,55 @@ class ConnectionPool {
 }
 
 class SQLite3 {
-  filename2ConnectionID = new Map();
-  connectionID2ConnectionInstance = new Map();
-
-  getConnectionID(filename, callback) {
-    let id = this.filename2ConnectionID.get(filename);
-    if (id === undefined) {
-      const instance = new Database(filename);
-      const id = instance.id;
-      this.filename2ConnectionID.set(filename, id);
-      this.connectionID2ConnectionInstance.set(id, instance);
-      callback(null, id);
-    } else {
-      callback(null, id);
+  filename2ConnectionInstance = new Map();
+  
+  getConnectionInstance(filename) {
+    let instance = this.filename2ConnectionInstance.get(filename);
+    if (!instance) {
+      instance = new Database(filename);
+      this.filename2ConnectionInstance.set(filename, instance);
     }
-  }
-
-  getConnectionInstance(connectionID) {
-    const instance = this.connectionID2ConnectionInstance.get(connectionID);
-    if (!instance) throw new Error("Invalid connection ID");
     return instance;
   }
 
-  close(connectionID, callback) {
-    const instance = this.getConnectionInstance(connectionID);
+  close(filename, callback) {
+    const instance = this.getConnectionInstance(filename);
     instance.close((error) => {
       if (error) callback(error);
       else {
         const filename = instance.filename;
         this.filename2ConnectionID.delete(filename);
-        this.connectionID2ConnectionInstance.delete(connectionID);
+        this.filename2ConnectionInstance.delete(filename);
         callback(null);
       }
     });
   }
 
-  run(connectionID, ...args) {
-    const instance = this.getConnectionInstance(connectionID);
+  run(filename, ...args) {
+    const instance = this.getConnectionInstance(filename);
     instance.run(...args);
   }
 
-  get(connectionID, ...args) {
-    const instance = this.getConnectionInstance(connectionID);
+  get(filename, ...args) {
+    const instance = this.getConnectionInstance(filename);
+    if (instance === undefined) {
+      console.log("boom");
+    }
     instance.get(...args);
   }
 
-  exec(connectionID, ...args) {
-    const instance = this.getConnectionInstance(connectionID);
+  exec(filename, ...args) {
+    const instance = this.getConnectionInstance(filename);
     instance.exec(...args);
   }
 
-  all(connectionID, ...args) {
-    const instance = this.getConnectionInstance(connectionID);
+  all(filename, ...args) {
+    const instance = this.getConnectionInstance(filename);
     instance.all(...args);
   }
 
-  serialize(connectionID, callback) {
-    const instance = this.getConnectionInstance(connectionID);
+  serialize(filename, callback) {
+    const instance = this.getConnectionInstance(filename);
     instance.serialize(callback);
   }
 }
@@ -320,13 +311,6 @@ class SQLite3 {
 const wrappedSQLite3 = new SQLite3();
 
 module.exports = {
-  OPEN_READONLY: wrappedSQLite3.OPEN_READONLY,
-  OPEN_READWRITE: wrappedSQLite3.OPEN_READWRITE,
-  OPEN_CREATE: wrappedSQLite3.OPEN_CREATE,
-  OPEN_SHAREDCACHE: wrappedSQLite3.OPEN_SHAREDCACHE,
-  OPEN_CACHE: wrappedSQLite3.OPEN_CACHE,
-  OPEN_URI: wrappedSQLite3.OPEN_URI,
-  getConnectionID: wrappedSQLite3.getConnectionID.bind(wrappedSQLite3),
   close: wrappedSQLite3.close.bind(wrappedSQLite3),
   all: wrappedSQLite3.all.bind(wrappedSQLite3),
   run: wrappedSQLite3.run.bind(wrappedSQLite3),

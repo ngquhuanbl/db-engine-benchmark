@@ -1,11 +1,12 @@
-import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from '../../../../constants/dataset';
-import { ReadFromEndSourceExtraData } from '../../../../types/shared/action';
-import { averageFnResults } from '../../../../types/shared/average-objects';
-import { ReadFromEndSourceResult } from '../../../../types/shared/result';
-import { getAllPossibleConvIds } from '../../../shared/generate-data';
-import { patchDOMException } from '../../../shared/patch-error';
-import { verifyReadFromEndSource } from '../../../shared/verify-result';
-import { getTableFullname, openIndexedDBDatabase } from '../common';
+import { DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT } from "../../../../constants/dataset";
+import { TABLE_NAME } from "../../../../constants/schema";
+
+import { ReadFromEndSourceExtraData } from "../../../../types/shared/action";
+import { averageFnResults } from "../../../../types/shared/average-objects";
+import { ReadFromEndSourceResult } from "../../../../types/shared/result";
+import { patchDOMException } from "../../../shared/patch-error";
+import { verifyReadFromEndSource } from "../../../shared/verify-result";
+import { openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
   datasetSize: number,
@@ -22,9 +23,6 @@ const originalExecute = async (
 
   const durability = relaxedDurability ? "relaxed" : "default";
 
-  const allPartitionKeys = getAllPossibleConvIds();
-  const allTableFullnames = allPartitionKeys.map(getTableFullname);
-
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
   let oneTransactionAverage = -1;
@@ -34,59 +32,46 @@ const originalExecute = async (
   {
     const logId = addLog("[idb][read-from-end-source][n-transaction] read");
 
-    const requestsData: Array<{ fullnames: string[] }> = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname] });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames });
-      }
-    }
-
     const checksumData: Array<string[]> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames }, countIndex) =>
-        Promise.all(
-          fullnames.map(
-            (fullname) =>
-              new Promise<void>((resolve, reject) => {
-                const transaction = dbInstance.transaction(
-                  fullname,
-                  "readonly",
-                  {
-                    durability,
-                  }
+      Array.from({ length: readFromEndSourceCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(TABLE_NAME);
+            const readReq = objectStore.openCursor(undefined, "prev");
+            const result = [];
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                cursor.continue();
+              } else {
+                if (checksumData[countIndex] === undefined)
+                  checksumData[countIndex] = [];
+                checksumData[countIndex].push(
+                  ...result.map(({ msgId }) => msgId)
                 );
-                const objectStore = transaction.objectStore(fullname);
-                const readReq = objectStore.openCursor(undefined, "prev");
-                readReq.onsuccess = function () {
-                  const cursor = readReq.result;
-                  if (cursor) {
-                    if (checksumData[countIndex] === undefined)
-                      checksumData[countIndex] = [];
-                    checksumData[countIndex].push(cursor.value.msgId);
-                    cursor.continue();
-                  } else {
-                    resolve();
-                  }
-                };
-                readReq.onerror = function () {
-                  reject(
-                    patchDOMException(readReq.error!, {
-                      tags: ["idb", "read-from-end-source", "n-transaction"],
-                    })
-                  );
-                };
-              })
-          )
-        )
+
+                resolve();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-from-end-source", "n-transaction"],
+                })
+              );
+            };
+          })
       )
     );
     const end = performance.now();
+
     nTransactionSum = end - start;
     nTransactionAverage = nTransactionSum / readFromEndSourceCount;
 
@@ -99,56 +84,47 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog("[idb][read-from-end-source][one-transaction] read");
-    const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
       durability,
     });
-
-    const requestsData: Array<{ fullnames: string[] }> = [];
-    for (let i = 0; i < readFromEndSourceCount; i += 1) {
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname] });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames });
-      }
-    }
+    const objectStore = transaction.objectStore(TABLE_NAME);
 
     const checksumData: Array<string[]> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames }, countIndex) =>
-        Promise.all(
-          fullnames.map(
-            (fullname) =>
-              new Promise<void>((resolve, reject) => {
-                const objectStore = transaction.objectStore(fullname);
-                const readReq = objectStore.openCursor(undefined, "prev");
-                readReq.onsuccess = function () {
-                  const cursor = readReq.result;
-                  if (cursor) {
-                    if (checksumData[countIndex] === undefined)
-                      checksumData[countIndex] = [];
-                    checksumData[countIndex].push(cursor.value.msgId);
-                    cursor.continue();
-                  } else {
-                    resolve();
-                  }
-                };
-                readReq.onerror = function () {
-                  reject(
-                    patchDOMException(readReq.error!, {
-                      tags: ["idb", "read-from-end-source", "one-transaction"],
-                    })
-                  );
-                };
-              })
-          )
-        )
+      Array.from({ length: readFromEndSourceCount }).map(
+        (_, countIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const readReq = objectStore.openCursor(undefined, "prev");
+            const result = [];
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                cursor.continue();
+              } else {
+                if (checksumData[countIndex] === undefined)
+                  checksumData[countIndex] = [];
+                checksumData[countIndex].push(
+                  ...result.map(({ msgId }) => msgId)
+                );
+
+                resolve();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-from-end-source", "n-transaction"],
+                })
+              );
+            };
+          })
       )
     );
     const end = performance.now();
+
     oneTransactionSum = end - start;
     oneTransactionAverage = oneTransactionSum / readFromEndSourceCount;
 

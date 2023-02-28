@@ -33,7 +33,7 @@ import {
   listenToRunAllEvent,
 } from "../helpers/shared/events";
 import { singleReadWrite as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
-import { singleReadWrite as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { singleReadWrite as executePreloadedSQLite } from "../helpers/renderer/preload/actions";
 import { singleReadWrite as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 import { Entries, Keys } from "../types/shared/common";
 import { SingleReadWriteResult } from "../types/shared/result";

@@ -25,3 +25,4 @@ yarn-error.log*
 /tools-build
 /src/data.json
 /data
+/nativelibs/sqlite3/node-sqlite3

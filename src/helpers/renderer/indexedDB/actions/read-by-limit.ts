@@ -2,13 +2,13 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_READ_BY_LIMIT_COUNT,
 } from "../../../../constants/dataset";
+import { TABLE_NAME } from "../../../../constants/schema";
 import { ReadByLimitExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByLimitResult } from "../../../../types/shared/result";
-import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
 import { verifyReadByLimit } from "../../../shared/verify-result";
-import { getTableFullname, openIndexedDBDatabase } from "../common";
+import { openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
   relaxedDurability: boolean,
@@ -25,8 +25,6 @@ const originalExecute = async (
 
   const durability = relaxedDurability ? "relaxed" : "default";
 
-  const allPartitionKeys = getAllPossibleConvIds();
-
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
   let oneTransactionAverage = -1;
@@ -36,60 +34,45 @@ const originalExecute = async (
   {
     const logId = addLog("[idb][read-by-limit][n-transaction] read");
 
-    const requestsData: Array<{ fullnames: string[] }> = [];
-    for (let i = 0; i < count; i += 1) {
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname] });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames });
-      }
-    }
-
     const checksumData: Array<string[]> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ fullnames }, countIndex) =>
+      Array.from({ length: count }).map(
+        (_, countIndex) =>
           new Promise<void>((resolve, reject) => {
-            let resultLength = 0;
-            const n = fullnames.length;
-            const execute = (index: number) => {
-              const fullname = fullnames[index];
-              const transaction = dbInstance.transaction(fullname, "readonly", {
-                durability,
-              });
-              const objectStore = transaction.objectStore(fullname);
-              const readReq = objectStore.openCursor();
-              readReq.onsuccess = () => {
-                const cursor = readReq.result;
-                if (cursor) {
-                  resultLength += 1;
-                  if (checksumData[countIndex] === undefined)
-                    checksumData[countIndex] = [];
-                  checksumData[countIndex].push(cursor.value.msgId);
-                  if (resultLength === limit) {
-                    resolve();
-                  } else cursor.continue();
-                } else {
-                  if (resultLength < limit && index < n - 1) {
-                    execute(index + 1);
-                  } else {
-                    resolve();
-                  }
-                }
-              };
-              readReq.onerror = () => {
-                reject(
-                  patchDOMException(readReq.error!, {
-                    tags: ["idb", "read-by-limit", "one-transaction"],
-                  })
-                );
-              };
+            const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(TABLE_NAME);
+            const readReq = objectStore.openCursor();
+            const result = [];
+            const finish = () => {
+              if (checksumData[countIndex] === undefined)
+                checksumData[countIndex] = [];
+              checksumData[countIndex].push(
+                ...result.map(({ msgId }) => msgId)
+              );
+              resolve();
             };
-            execute(0);
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                if (result.length === limit) {
+                  finish();
+                } else cursor.continue();
+              } else {
+                finish();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-by-limit", "n-transaction"],
+                })
+              );
+            };
           })
       )
     );
@@ -107,70 +90,51 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog("[idb][read-by-limit][one-transaction] read");
-    const allTableFullnames = allPartitionKeys.map((partitionKey) =>
-      getTableFullname(partitionKey)
-    );
-    const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
       durability,
     });
-
-    const requestsData: Array<{ fullnames: string[] }> = [];
-    for (let i = 0; i < count; i += 1) {
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname] });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames });
-      }
-    }
-
+    const objectStore = transaction.objectStore(TABLE_NAME);
     const checksumData: Array<string[]> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ fullnames }, countIndex) =>
+      Array.from({ length: count }).map(
+        (_, countIndex) =>
           new Promise<void>((resolve, reject) => {
-            let resultLength = 0;
-            const n = fullnames.length;
-            const execute = (index: number) => {
-              const fullname = fullnames[index];
-              const objectStore = transaction.objectStore(fullname);
-              const readReq = objectStore.openCursor();
-              readReq.onsuccess = () => {
-                const cursor = readReq.result;
-                if (cursor) {
-                  resultLength += 1;
-                  if (checksumData[countIndex] === undefined)
-                    checksumData[countIndex] = [];
-                  checksumData[countIndex].push(cursor.value.msgId);
-                  if (resultLength === limit) {
-                    resolve();
-                  } else cursor.continue();
-                } else {
-                  if (resultLength < limit && index < n - 1) {
-                    execute(index + 1);
-                  } else {
-                    resolve();
-                  }
-                }
-              };
-              readReq.onerror = () => {
-                reject(
-                  patchDOMException(readReq.error!, {
-                    tags: ["idb", "read-by-limit", "one-transaction"],
-                  })
-                );
-              };
+            const readReq = objectStore.openCursor();
+            const result = [];
+            const finish = () => {
+              if (checksumData[countIndex] === undefined)
+                checksumData[countIndex] = [];
+              checksumData[countIndex].push(
+                ...result.map(({ msgId }) => msgId)
+              );
+              resolve();
             };
-            execute(0);
+            readReq.onsuccess = function () {
+              const cursor = readReq.result;
+              if (cursor) {
+                result.push(cursor.value);
+                if (result.length === limit) {
+                  finish();
+                } else cursor.continue();
+              } else {
+                finish();
+              }
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-by-limit", "n-transaction"],
+                })
+              );
+            };
           })
       )
     );
     const end = performance.now();
-    oneTransactionSum = end - start;
 
+    oneTransactionSum = end - start;
     oneTransactionAverage = oneTransactionSum / count;
 
     verifyReadByLimit(checksumData, count, limit);

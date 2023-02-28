@@ -7,8 +7,16 @@ const {
   MESSAGE,
   LOAD_DATA,
   LOAD_DATA_PROGRESS,
+  WRITE_RESULT,
+  SOCKET_CONFIG,
 } = require("./channel");
 const sqlite3 = require("./sqlite3");
+
+let socketConfig = null;
+ipcRenderer.on(SOCKET_CONFIG, (_, data) => {
+	socketConfig = data;
+})
+
 
 // As an example, here we use the exposeInMainWorld API to expose the browsers
 // and node versions to the main window.
@@ -59,4 +67,14 @@ process.once("loaded", () => {
       ipcRenderer.removeListener(MESSAGE, listener),
     sendMessage: (message) => ipcRenderer.send(MESSAGE, message),
   });
+  
+  contextBridge.exposeInMainWorld("resultHandler", {
+	write: (message) => {
+		ipcRenderer.send(WRITE_RESULT, message);
+	}
+  })
+  
+  contextBridge.exposeInMainWorld("socketConfig", {
+	get: () => ipcRenderer.invoke(SOCKET_CONFIG)
+  })
 });

@@ -1,4 +1,5 @@
 import sqlite3 from "sqlite3";
+import { CIPHER_KEY } from "../../../constants/cipher-key";
 import {
   COLUMN_LIST_INFO,
   DB_NAME,
@@ -12,6 +13,7 @@ import { getDBFilePath } from "../../shared/directory";
 import { escapeStr } from "../../shared/escape-str";
 import { getAllPossibleConvIds } from "../../shared/generate-data";
 import { patchJSError } from "../../shared/patch-error";
+import { setSqlcipherKey } from "../../shared/sql-predefined-pragma";
 import { ConnectionPool } from "./connection-pool";
 
 let idCounter = 0;
@@ -29,7 +31,13 @@ class Database {
           if (err) {
             reject(err);
           } else {
-            resolve(conn);
+            conn.exec(setSqlcipherKey(CIPHER_KEY), (err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(conn);
+              }
+            });
           }
         });
       });

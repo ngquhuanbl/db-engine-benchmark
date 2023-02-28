@@ -45,7 +45,7 @@ import {
 } from "../helpers/shared/events";
 import { getConvId } from "../helpers/shared/generate-data";
 import { readByIndex as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
-import { readByIndex as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { readByIndex as executePreloadedSQLite } from "../helpers/renderer/preload/actions";
 import { readByIndex as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 
 import { Entries, Keys } from "../types/shared/common";

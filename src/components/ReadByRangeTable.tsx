@@ -42,7 +42,7 @@ import {
   listenToRunAllEvent,
 } from "../helpers/shared/events";
 import { readByRange as executeIndexedDB } from "../helpers/renderer/indexedDB/actions";
-import { readByRange as executePreloadedSQLite } from "../helpers/renderer/sqlite/actions";
+import { readByRange as executePreloadedSQLite } from "../helpers/renderer/preload/actions";
 import { readByRange as executeNodeIntegrationSQLite } from "../helpers/renderer/sqlite-nodeIntegration/actions";
 import { Entries, Keys } from "../types/shared/common";
 import { ReadByRangeResult } from "../types/shared/result";

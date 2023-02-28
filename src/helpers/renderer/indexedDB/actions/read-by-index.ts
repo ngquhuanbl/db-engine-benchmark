@@ -1,11 +1,10 @@
-import { INDEX_NAME } from "../../../../constants/schema";
+import { TABLE_NAME, INDEX_NAME } from "../../../../constants/schema";
 import { ReadByIndexExtraData } from "../../../../types/shared/action";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { ReadByIndexResult } from "../../../../types/shared/result";
-import { getAllPossibleConvIds } from "../../../shared/generate-data";
 import { patchDOMException } from "../../../shared/patch-error";
 import { verifyReadByIndexField } from "../../../shared/verify-result";
-import { getTableFullname, openIndexedDBDatabase } from "../common";
+import { openIndexedDBDatabase } from "../common";
 
 const originalExecute = async (
   relaxedDurability: boolean,
@@ -20,8 +19,6 @@ const originalExecute = async (
 
   const durability = relaxedDurability ? "relaxed" : "default";
 
-  const allPartitionKeys = getAllPossibleConvIds();
-
   let nTransactionAverage = -1;
   let nTransactionSum = -1;
   let oneTransactionAverage = -1;
@@ -31,54 +28,36 @@ const originalExecute = async (
   {
     const logId = addLog(`[idb][read-by-index][n-transaction] read`);
 
-    const requestsData: Array<{ fullnames: string[]; key: string }> = [];
-    for (let i = 0; i < keys.length; i += 1) {
-      const key = keys[i];
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname], key });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames, key });
-      }
-    }
-
-    const checksumData: number[] = [];
+    const checksumData: Array<number> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames, key }, index) =>
-        Promise.all(
-          fullnames.map(
-            (fullname) =>
-              new Promise<void>((resolve, reject) => {
-                const transaction = dbInstance.transaction(
-                  fullname,
-                  "readonly",
-                  {
-                    durability,
-                  }
-                );
-                const objectStore = transaction.objectStore(fullname);
-                const indexObj = objectStore.index(INDEX_NAME);
-                const readReq = indexObj.getAll(key);
-                readReq.onsuccess = function () {
-                  const length = readReq.result.length;
-                  if (checksumData[index] === undefined)
-                    checksumData[index] = 0;
-                  checksumData[index] += length;
-                  resolve();
-                };
-                readReq.onerror = function () {
-                  reject(
-                    patchDOMException(readReq.error!, {
-                      tags: ["idb", "read-by-index", "n-transaction"],
-                    })
-                  );
-                };
-              })
-          )
-        )
+      keys.map(
+        (key, keyIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
+              durability,
+            });
+            const objectStore = transaction.objectStore(TABLE_NAME);
+            const indexObj = objectStore.index(INDEX_NAME);
+            const readReq = indexObj.getAll(key);
+            readReq.onsuccess = function () {
+              const resultLength = readReq.result.length;
+
+              if (checksumData[keyIndex] === undefined)
+                checksumData[keyIndex] = 0;
+              checksumData[keyIndex] += resultLength;
+
+              resolve();
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-by-index", "n-transaction"],
+                })
+              );
+            };
+          })
       )
     );
     const end = performance.now();
@@ -95,64 +74,41 @@ const originalExecute = async (
   //#region one transaction
   {
     const logId = addLog(`[idb][read-by-index][one-transaction] read`);
-    const allPartitionKeys = getAllPossibleConvIds();
-    const allTableFullnames = allPartitionKeys.map((partitionKey) =>
-      getTableFullname(partitionKey)
-    );
-    const transaction = dbInstance.transaction(allTableFullnames, "readonly", {
+
+    const transaction = dbInstance.transaction(TABLE_NAME, "readonly", {
       durability,
     });
+    const objectStore = transaction.objectStore(TABLE_NAME);
+    const indexObj = objectStore.index(INDEX_NAME);
 
-    const requestsData: Array<{ fullnames: string[]; key: string }> = [];
-    for (let i = 0; i < keys.length; i += 1) {
-      const key = keys[i];
-      if (PARTITION_MODE) {
-        const fullname = getTableFullname(SELECTED_PARTITION_KEY);
-        requestsData.push({ fullnames: [fullname], key });
-      } else {
-        const fullnames = allPartitionKeys.map(getTableFullname);
-        requestsData.push({ fullnames, key });
-      }
-    }
-
-    const checksumData: number[] = [];
+    const checksumData: Array<number> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(({ fullnames, key }, keyIndex) =>
-        Promise.all(
-          fullnames.map(
-            (fullname) =>
-              new Promise<void>((resolve, reject) => {
-                const objectStore = transaction.objectStore(fullname);
-                const indexObj = objectStore.index(INDEX_NAME);
-                const readReq = indexObj.getAll(key);
-                readReq.onsuccess = function () {
-                  const length = readReq.result.length;
-                  if (checksumData[keyIndex] === undefined)
-                    checksumData[keyIndex] = 0;
-                  checksumData[keyIndex] += length;
-                  resolve();
-                };
-                readReq.onerror = function () {
-                  reject(
-                    patchDOMException(readReq.error, {
-                      tags: [
-                        "idb",
-                        "read-by-index",
-                        "one-transaction",
-                        `index ${keyIndex}`,
-                      ],
-                    })
-                  );
-                };
-              })
-          )
-        )
+      keys.map(
+        (key, keyIndex) =>
+          new Promise<void>((resolve, reject) => {
+            const readReq = indexObj.getAll(key);
+            readReq.onsuccess = function () {
+              const resultLength = readReq.result.length;
+
+              if (checksumData[keyIndex] === undefined)
+                checksumData[keyIndex] = 0;
+              checksumData[keyIndex] += resultLength;
+
+              resolve();
+            };
+            readReq.onerror = function () {
+              reject(
+                patchDOMException(readReq.error!, {
+                  tags: ["idb", "read-by-index", "n-transaction"],
+                })
+              );
+            };
+          })
       )
     );
     const end = performance.now();
-
     oneTransactionSum = end - start;
     oneTransactionAverage = oneTransactionSum / numOfKeys;
 
@@ -160,7 +116,6 @@ const originalExecute = async (
 
     removeLog(logId);
   }
-
   //#endregion
 
   return {

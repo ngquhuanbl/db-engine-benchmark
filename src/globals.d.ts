@@ -17,6 +17,8 @@ import {
 } from "./types/shared/result";
 import { Data } from "./types/shared/data";
 import { Message } from "./types/shared/message-port";
+import { FullResult } from "./helpers/shared/execute/constants";
+import { SocketInfo } from './types/socket';
 
 declare global {
   var preloadedSQLite3: {
@@ -189,4 +191,16 @@ declare global {
   var PARTITION_MODE: boolean;
   var SELECTED_PARTITION_KEY: string;
   var VERIFY_MODE_ON: boolean;
+
+  var resultHandler: {
+    write: (message: {
+      datasetSize: number;
+      benchmarkCount: number;
+      result: FullResult;
+    }) => void;
+  };
+
+  var socketConfig: {
+    get: () => Promise<SocketInfo>;
+  };
 }

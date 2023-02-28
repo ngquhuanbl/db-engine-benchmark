@@ -1,16 +1,11 @@
+import { TABLE_NAME } from "../../../../constants/schema";
 import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
-import {
-  getAllPossibleConvIds,
-  getData,
-} from "../../../shared/generate-data";
+import { getData } from "../../../shared/generate-data";
+// import { DataLoaderImpl } from "../../../shared/data-loader";
 import { patchDOMException } from "../../../shared/patch-error";
 import { verifyReadSingleItem } from "../../../shared/verify-result";
-import {
-  getTableFullname,
-  openIndexedDBDatabase,
-  resetIndexedDBData,
-} from "../common";
+import { openIndexedDBDatabase, resetIndexedDBData } from "../common";
 
 const originalExecute = async (
   datasetSize: number,
@@ -21,7 +16,10 @@ const originalExecute = async (
   removeLog: (id: number) => void
 ): Promise<SingleReadWriteResult> => {
   const dbInstance = await openIndexedDBDatabase();
-  
+
+  //   const dataLoader = DataLoaderImpl.getInstance();
+  //   const data = await dataLoader.getDataset(datasetSize);
+
   const durability = relaxedDurability ? "relaxed" : "default";
 
   async function resetData() {
@@ -29,6 +27,12 @@ const originalExecute = async (
     return resetIndexedDBData(dbInstance).finally(() => {
       removeLog(logId);
     });
+  }
+
+  const dataset: Array<any> = [];
+  for (let i = 0; i < datasetSize; i += 1) {
+    const item = getData(i);
+    dataset.push(item);
   }
 
   // Reset data
@@ -41,23 +45,19 @@ const originalExecute = async (
   {
     const logId = addLog("[idb][single-read-write][n-transaction] write");
 
-    const requestsData: Array<{ fullname: string; item: any }> = [];
-    for (let i = 0; i < datasetSize; i += 1) {
-      const item = getData(i);
-      const partitionKey = item.toUid;
-      const fullname = getTableFullname(partitionKey);
-      requestsData.push({ fullname, item });
-    }
-
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ fullname, item }) =>
+      dataset.map(
+        (item) =>
           new Promise<void>((resolve, reject) => {
-            const transaction = dbInstance.transaction(fullname, "readwrite", {
-              durability,
-            });
-            const objectStore = transaction.objectStore(fullname);
+            const transaction = dbInstance.transaction(
+              TABLE_NAME,
+              "readwrite",
+              {
+                durability,
+              }
+            );
+            const objectStore = transaction.objectStore(TABLE_NAME);
             const writeReq = objectStore.add(item);
             writeReq.onsuccess = function () {
               resolve();
@@ -82,30 +82,26 @@ const originalExecute = async (
   {
     const logId = addLog("[idb][single-read-write][n-transaction] read");
 
-    const requestsData: Array<{ fullname: string; item: any }> = [];
-    for (let i = 0; i < datasetSize; i += 1) {
-      const item = getData(i);
-      const partitionKey = item.toUid;
-      const fullname = getTableFullname(partitionKey);
-      requestsData.push({ fullname, item });
-    }
-
-    const checksumData: string[] = [];
+    const checksumData: Array<string> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ fullname, item }) =>
+      dataset.map(
+        ({ msgId }) =>
           new Promise<void>((resolve, reject) => {
-            const transaction = dbInstance.transaction(fullname, "readwrite", {
-              durability,
-            });
-            const objectStore = transaction.objectStore(fullname);
-
-            const readReq = objectStore.get(item.msgId);
+            const transaction = dbInstance.transaction(
+              TABLE_NAME,
+              "readwrite",
+              {
+                durability,
+              }
+            );
+            const objectStore = transaction.objectStore(TABLE_NAME);
+            const readReq = objectStore.get(msgId);
             readReq.onsuccess = function () {
-              const entry = readReq.result;
-              checksumData.push(entry.msgId);
+              const result = readReq.result;
+              const { msgId } = result;
+              checksumData.push(msgId);
               resolve();
             };
             readReq.onerror = function () {
@@ -121,8 +117,9 @@ const originalExecute = async (
     const end = performance.now();
     nTransactionRead = end - start;
 
-    removeLog(logId);
     verifyReadSingleItem(checksumData, datasetSize);
+
+    removeLog(logId);
   }
   //#endregion
 
@@ -135,29 +132,16 @@ const originalExecute = async (
   // WRITE
   {
     const logId = addLog("[idb][single-read-write][one-transaction] write");
-    const allPartitionKeys = getAllPossibleConvIds();
-    const allFullnames = allPartitionKeys.map(getTableFullname);
-    const transaction = dbInstance.transaction(allFullnames, "readwrite", {
+    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
       durability,
     });
-
-    const requestsData: Array<{ fullname: string; item: any }> = [];
-    for (let i = 0; i < datasetSize; i += 1) {
-      const item = getData(i);
-      const partitionKey = item.toUid;
-      const fullname = getTableFullname(partitionKey);
-      requestsData.push({
-        item,
-        fullname,
-      });
-    }
+    const objectStore = transaction.objectStore(TABLE_NAME);
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ item, fullname }) =>
+      dataset.map(
+        (item) =>
           new Promise<void>((resolve, reject) => {
-            const objectStore = transaction.objectStore(fullname);
             const writeReq = objectStore.add(item);
             writeReq.onsuccess = function () {
               resolve();
@@ -173,6 +157,7 @@ const originalExecute = async (
       )
     );
     const end = performance.now();
+
     oneTransactionWrite = end - start;
 
     removeLog(logId);
@@ -180,35 +165,22 @@ const originalExecute = async (
   // READ
   {
     const logId = addLog("[idb][single-read-write][one-transaction] read");
-    const allPartitionKeys = getAllPossibleConvIds();
-    const allFullnames = allPartitionKeys.map(getTableFullname);
-    const transaction = dbInstance.transaction(allFullnames, "readwrite", {
+    const transaction = dbInstance.transaction(TABLE_NAME, "readwrite", {
       durability,
     });
+    const objectStore = transaction.objectStore(TABLE_NAME);
 
-    const requestsData: Array<{ fullname: string; key: any }> = [];
-    for (let i = 0; i < datasetSize; i += 1) {
-      const item = getData(i);
-      const partitionKey = item.toUid;
-      const fullname = getTableFullname(partitionKey);
-      requestsData.push({
-        fullname,
-        key: item.msgId,
-      });
-    }
-
-    const checksumData: string[] = [];
+    const checksumData: Array<string> = [];
 
     const start = performance.now();
     await Promise.all(
-      requestsData.map(
-        ({ fullname, key }) =>
+      dataset.map(
+        ({ msgId }) =>
           new Promise<void>((resolve, reject) => {
-            const objectStore = transaction.objectStore(fullname);
-            const readReq = objectStore.get(key);
+            const readReq = objectStore.get(msgId);
             readReq.onsuccess = function () {
-              const entry = readReq.result;
-              checksumData.push(entry.msgId);
+              const { msgId } = readReq.result;
+              checksumData.push(msgId);
               resolve();
             };
             readReq.onerror = function () {
@@ -222,7 +194,10 @@ const originalExecute = async (
       )
     );
     const end = performance.now();
+
     oneTransactionRead = end - start;
+
+    verifyReadSingleItem(checksumData, datasetSize);
 
     removeLog(logId);
   }

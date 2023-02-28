@@ -8,8 +8,58 @@ const {
   MESSAGE,
   LOAD_DATA,
   LOAD_DATA_PROGRESS,
+  WRITE_RESULT,
+  SOCKET_CONFIG,
 } = require("./channel");
 const { DataLoaderImpl } = require("./data-loader");
+const crypto = require("crypto");
+const getPort = require("get-port");
+const childProcess = require("child_process");
+const fs = require("fs");
+
+let serverProcess;
+let serverProcessPort;
+const authToken = crypto.randomBytes(20).toString("hex");
+async function assignServerProcessPort() {
+  serverProcessPort = await getPort({ host: "127.0.0.1" });
+}
+async function startupServer() {
+  const executorPath = path.join(__dirname, "sqlite-server.js");
+  await assignServerProcessPort();
+  if (!serverProcessPort) {
+    throw new Error("No process port assigned.");
+  }
+
+  const process = childProcess.fork(
+    executorPath,
+    [serverProcessPort.toString(), authToken],
+    {
+      stdio: ["pipe", "inherit", "pipe", "ipc"],
+    }
+  );
+
+  process.on("error", (error) => {
+    console.error("SQLite server process error", error);
+  });
+
+  if (process.stderr) {
+    process.stderr.on("data", (data) => {
+      console.log(data.toString());
+    });
+  }
+  if (process.stdout) {
+    process.stdout.on("data", (data) => {
+      console.log(data.toString());
+    });
+  }
+  return process;
+}
+
+async function startup() {
+  if (!serverProcess) {
+    serverProcess = await startupServer();
+  }
+}
 
 // Create the native browser window.
 function createWindow() {
@@ -43,6 +93,7 @@ function createWindow() {
 
   ipcMain.handle(USER_PATH, () => app.getPath("userData"));
   ipcMain.handle(JOIN_PATHS, (_, ...paths) => path.join(...paths));
+  ipcMain.handle(SOCKET_CONFIG, () => ({ authToken, port: serverProcessPort }));
   return mainWindow;
 }
 
@@ -98,8 +149,10 @@ function setupLocalFilesNormalizerProxy() {
 // This method will be called when Electron has finished its initialization and
 // is ready to create the browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
+    await startup();
+
     const mainWindow = createWindow();
     const nodeIntegrationWindow = createNodeIntegrationWindow();
 
@@ -119,6 +172,30 @@ app.whenReady().then(() => {
       return dataLoader.getDataset(datasetSize, (value) => {
         mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
       });
+    });
+
+    ipcMain.on(WRITE_RESULT, (event, message) => {
+      const { datasetSize, benchmarkCount, result } = message;
+      if (!(datasetSize && benchmarkCount && result)) {
+        console.error("Invalid write-result message");
+        return;
+      }
+
+      const fileName = `${datasetSize}_${benchmarkCount}.json`;
+      const userPath = app.getPath("userData");
+      const resultDir = path.join(userPath, "results");
+      const filePath = path.join(resultDir, fileName);
+
+      if (!fs.existsSync(resultDir)) {
+        fs.mkdirSync(resultDir);
+      }
+
+      const data = JSON.stringify(result);
+	  console.log(`=======================================`);
+      console.log(`[▶️] Writing result file: ${filePath}`);
+      fs.writeFileSync(filePath, data);
+      console.log(`[✅] ${filePath} `);
+	  console.log(`=======================================`);
     });
 
     setupLocalFilesNormalizerProxy();
@@ -161,3 +238,12 @@ app.on("web-contents-created", (event, contents) => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
+
+app.on("before-quit", () => {
+  console.log("Quitting ...");
+  if (serverProcess) {
+    console.log("Killing child process");
+    serverProcess.kill("SIGTERM");
+    serverProcess = undefined;
+  }
+});
