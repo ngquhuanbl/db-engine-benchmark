@@ -11,38 +11,64 @@ export async function start(
 ): Promise<void> {
   const idbResult = await executeIDB(datasetSize, benchmarkCount);
 
+  window.resultHandler.write({
+    datasetSize,
+    benchmarkCount: benchmarkCount,
+    result: {
+      idb: idbResult,
+    },
+  });
+
   const singlePreloadResult = await executeSinglePreload(
     datasetSize,
     benchmarkCount
   );
+
+  window.resultHandler.write({
+    datasetSize,
+    benchmarkCount: benchmarkCount,
+    result: {
+      "preload-single": singlePreloadResult,
+    },
+  });
 
   const crossPreloadResult = await executeCrossPreload(
     datasetSize,
     benchmarkCount
   );
 
+  window.resultHandler.write({
+    datasetSize,
+    benchmarkCount: benchmarkCount,
+    result: {
+      "preload-cross": crossPreloadResult,
+    },
+  });
+
   const singleWebsocketResult = await executeSingleWebsocket(
     datasetSize,
     benchmarkCount
   );
+
+  window.resultHandler.write({
+    datasetSize,
+    benchmarkCount: benchmarkCount,
+    result: {
+      "socket-single": singleWebsocketResult,
+    },
+  });
 
   const crossWebsocketResult = await executeCrossWebsocket(
     datasetSize,
     benchmarkCount
   );
 
-  const finalResult: FullResult = {
-    idb: idbResult,
-    "preload-single": singlePreloadResult,
-    "preload-cross": crossPreloadResult,
-    "socket-single": singleWebsocketResult,
-    "socket-cross": crossWebsocketResult,
-  };
-
   window.resultHandler.write({
     datasetSize,
     benchmarkCount: benchmarkCount,
-    result: finalResult,
+    result: {
+      "socket-cross": crossWebsocketResult,
+    },
   });
 }
 

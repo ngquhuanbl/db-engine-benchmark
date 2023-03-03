@@ -190,12 +190,27 @@ app.whenReady().then(async () => {
         fs.mkdirSync(resultDir);
       }
 
-      const data = JSON.stringify(result);
-	  console.log(`=======================================`);
-      console.log(`[▶️] Writing result file: ${filePath}`);
-      fs.writeFileSync(filePath, data);
-      console.log(`[✅] ${filePath} `);
-	  console.log(`=======================================`);
+      let data = {};
+
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+		data = JSON.parse(buffer);
+      }
+
+      data = {
+        ...data,
+        ...result,
+      };
+	  
+	  const method = Object.keys(result)[0];
+
+      const serializedData = JSON.stringify(data);
+
+      console.log(`=======================================`);
+      console.log(`[▶️][${method}] Writing result file: ${filePath}`);
+      fs.writeFileSync(filePath, serializedData);
+      console.log(`[✅][${method}] ${filePath} `);
+      console.log(`=======================================`);
     });
 
     setupLocalFilesNormalizerProxy();

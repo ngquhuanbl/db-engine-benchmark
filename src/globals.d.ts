@@ -196,7 +196,7 @@ declare global {
     write: (message: {
       datasetSize: number;
       benchmarkCount: number;
-      result: FullResult;
+      result: Partial<FullResult>;
     }) => void;
   };
 
