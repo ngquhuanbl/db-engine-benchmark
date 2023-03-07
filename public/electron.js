@@ -91,7 +91,16 @@ function createWindow() {
   //     mainWindow.webContents.openDevTools();
   //   }
 
-  ipcMain.handle(USER_PATH, () => app.getPath("userData"));
+  ipcMain.handle(USER_PATH, (_, dbName, convId) => {
+    const userPath = app.getPath("userData");
+    const dirPath = path.join(userPath, "sqlite", dbName);
+
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+
+    return path.join(dirPath, `${convId}.db`);
+  });
   ipcMain.handle(JOIN_PATHS, (_, ...paths) => path.join(...paths));
   ipcMain.handle(SOCKET_CONFIG, () => ({ authToken, port: serverProcessPort }));
   return mainWindow;
@@ -194,15 +203,15 @@ app.whenReady().then(async () => {
 
       if (fs.existsSync(filePath)) {
         const buffer = fs.readFileSync(filePath);
-		data = JSON.parse(buffer);
+        data = JSON.parse(buffer);
       }
 
       data = {
         ...data,
         ...result,
       };
-	  
-	  const method = Object.keys(result)[0];
+
+      const method = Object.keys(result)[0];
 
       const serializedData = JSON.stringify(data);
 

@@ -47,7 +47,7 @@ process.once("loaded", () => {
     },
   });
   contextBridge.exposeInMainWorld("path", {
-    getUserPath: () => ipcRenderer.invoke(USER_PATH),
+    getDBFilePath: (dbName, convId) => ipcRenderer.invoke(USER_PATH, dbName, convId),
     join: (...paths) => ipcRenderer.invoke(JOIN_PATHS, ...paths),
   });
   contextBridge.exposeInMainWorld("__BUNDLENAME__", { value: "renderer" });

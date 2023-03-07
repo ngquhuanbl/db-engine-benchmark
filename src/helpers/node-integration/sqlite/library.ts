@@ -9,7 +9,6 @@ import {
   TABLE_NAME,
 } from "../../../constants/schema";
 import { NUM_READ, Z_OPEN_MODE } from "../../../constants/sqlite";
-import { getDBFilePath } from "../../shared/directory";
 import { escapeStr } from "../../shared/escape-str";
 import { getAllPossibleConvIds } from "../../shared/generate-data";
 import { patchJSError } from "../../shared/patch-error";
@@ -86,7 +85,7 @@ export class DAL {
     if (cachedConn === undefined) {
       return new Promise<Database>(async (resolve, reject) => {
         try {
-          const fileName = await getDBFilePath(DB_NAME, convId);
+          const fileName = await path.getDBFilePath(DB_NAME, convId);
 
           const instance = new Database(fileName);
 

@@ -8,14 +8,13 @@ import {
 } from "../../../constants/schema";
 import { escapeStr } from "../../shared/escape-str";
 import { patchJSError } from "../../shared/patch-error";
-import { getDBFilePath } from "../../shared/directory";
 import { Database } from "./library";
 import { getAllPossibleConvIds } from "../../shared/generate-data";
 
 export function openSQLiteDatabase(partitionKey: string) {
   return new Promise<Database>(async (resolve, reject) => {
     try {
-      const fileName = await getDBFilePath(DB_NAME, partitionKey);
+      const fileName = await path.getDBFilePath(DB_NAME, partitionKey);
 
       const instance = new Database(fileName);
 

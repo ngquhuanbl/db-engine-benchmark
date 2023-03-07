@@ -168,7 +168,7 @@ declare global {
     };
   };
   var path: {
-    getUserPath: () => Promise<string>;
+    getDBFilePath: (dbName: string, convId: string) => Promise<string>;
     join: (...paths) => Promise<string>;
   };
   var __BUNDLENAME__: { value: string };
