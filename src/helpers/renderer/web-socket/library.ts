@@ -293,6 +293,7 @@ export class SQLiteSocket {
       const url = `ws://127.0.0.1:${port}`;
       this.logInfo(`Create socket to ${url}`);
       const socket = new WebSocket(url);
+      socket.binaryType = "arraybuffer";
       socket.onopen = () => {
         this.socketInstanceContainer.resolve(socket);
       };
@@ -300,14 +301,30 @@ export class SQLiteSocket {
         this.logError(`Websocket error:`, e);
       };
       socket.onmessage = (e) => {
-        const data = e.data.toString();
-        const parsedData = JSON.parse(data);
-        const { id } = parsedData;
-        const messageHandler = this.messageHandlers.get(id);
-        if (messageHandler) {
-          messageHandler(parsedData);
-        } else {
-          this.logError(`Found no handler for message with id of '${id}'`);
+        const { data } = e;
+
+        if (data.constructor !== ArrayBuffer) return;
+
+        const td = new TextDecoder("utf-8");
+        const arrayData = new Uint8Array(data);
+
+        let rawString = "";
+        try {
+          rawString = td.decode(arrayData);
+        } catch (e) {
+          console.error(`Can't decode binary data`, e);
+          return;
+        }
+
+        if (typeof rawString === "string") {
+          const parsedData = JSON.parse(rawString);
+          const { id } = parsedData;
+          const messageHandler = this.messageHandlers.get(id);
+          if (messageHandler) {
+            messageHandler(parsedData);
+          } else {
+            this.logError(`Found no handler for message with id of '${id}'`);
+          }
         }
       };
       return this.socketInstanceContainer.promise;
@@ -341,16 +358,27 @@ export class SQLiteSocket {
         auth: authToken,
       };
       const socket = await this.getSocket();
-      socket.send(JSON.stringify(packedData));
 
-      const messageHandler = (data: ReceivedSocketData) => {
-        const { error, result } = data;
-        if (callback) {
-          callback(error, result);
-        }
-        resolve();
-      };
-      this.messageHandlers.set(currentId, messageHandler);
+      let dataLen = 0;
+      let encodeData = null;
+      if (packedData && packedData.constructor === Object) {
+        const stringData = JSON.stringify(packedData);
+        const enc = new TextEncoder();
+        encodeData = enc.encode(stringData);
+        dataLen = encodeData.length;
+      }
+      if (encodeData && dataLen > 0) {
+        socket.send(encodeData.buffer);
+
+        const messageHandler = (data: ReceivedSocketData) => {
+          const { error, result } = data;
+          if (callback) {
+            callback(error, result);
+          }
+          resolve();
+        };
+        this.messageHandlers.set(currentId, messageHandler);
+      }
     });
   }
 }
