@@ -107,38 +107,38 @@ function createWindow() {
 }
 
 // Create the native browser window.
-function createNodeIntegrationWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    // Set the path of an additional "preload" script that can be used to
-    // communicate between node-land and browser-land.
-    webPreferences: {
-      preload: path.join(__dirname, "nodeIntegration.preload.js"),
-      contextIsolation: false,
-      nodeIntegration: true,
-    },
-    show: false,
-  });
+// function createNodeIntegrationWindow() {
+//   const mainWindow = new BrowserWindow({
+//     width: 800,
+//     height: 600,
+//     // Set the path of an additional "preload" script that can be used to
+//     // communicate between node-land and browser-land.
+//     webPreferences: {
+//       preload: path.join(__dirname, "nodeIntegration.preload.js"),
+//       contextIsolation: false,
+//       nodeIntegration: true,
+//     },
+//     show: false,
+//   });
 
-  // In production, set the initial browser path to the local bundle generated
-  // by the Create React App build process.
-  // In development, set it to localhost to allow live/hot-reloading.
-  const appURL = app.isPackaged
-    ? url.format({
-        pathname: path.join(__dirname, "node-integration.html"),
-        protocol: "file:",
-        slashes: true,
-      })
-    : "http://localhost:3001";
-  mainWindow.loadURL(appURL);
+//   // In production, set the initial browser path to the local bundle generated
+//   // by the Create React App build process.
+//   // In development, set it to localhost to allow live/hot-reloading.
+//   const appURL = app.isPackaged
+//     ? url.format({
+//         pathname: path.join(__dirname, "node-integration.html"),
+//         protocol: "file:",
+//         slashes: true,
+//       })
+//     : "http://localhost:3001";
+//   mainWindow.loadURL(appURL);
 
-  // Automatically open Chrome's DevTools in development mode.
-  // if (!app.isPackaged) {
-  //   mainWindow.webContents.openDevTools();
-  // }
-  return mainWindow;
-}
+//   // Automatically open Chrome's DevTools in development mode.
+//   // if (!app.isPackaged) {
+//   //   mainWindow.webContents.openDevTools();
+//   // }
+//   return mainWindow;
+// }
 
 // Setup a local proxy to adjust the paths of requested files when loading
 // them from the local production bundle (e.g.: local fonts, etc...).
@@ -162,26 +162,27 @@ app.whenReady().then(async () => {
   try {
     await startup();
 
-    const mainWindow = createWindow();
-    const nodeIntegrationWindow = createNodeIntegrationWindow();
+	createWindow();
+    // const mainWindow = createWindow();
+    // const nodeIntegrationWindow = createNodeIntegrationWindow();
 
-    ipcMain.on(MESSAGE, (event, message) => {
-      const { sender } = event;
+    // ipcMain.on(MESSAGE, (event, message) => {
+    //   const { sender } = event;
 
-      if (sender === mainWindow.webContents) {
-        nodeIntegrationWindow.webContents.send(MESSAGE, message);
-      }
-      if (sender === nodeIntegrationWindow.webContents) {
-        mainWindow.webContents.send(MESSAGE, message);
-      }
-    });
+    //   if (sender === mainWindow.webContents) {
+    //     nodeIntegrationWindow.webContents.send(MESSAGE, message);
+    //   }
+    //   if (sender === nodeIntegrationWindow.webContents) {
+    //     mainWindow.webContents.send(MESSAGE, message);
+    //   }
+    // });
 
-    ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
-      const dataLoader = DataLoaderImpl.getInstance();
-      return dataLoader.getDataset(datasetSize, (value) => {
-        mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
-      });
-    });
+    // ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
+    //   const dataLoader = DataLoaderImpl.getInstance();
+    //   return dataLoader.getDataset(datasetSize, (value) => {
+    //     mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
+    //   });
+    // });
 
     ipcMain.on(WRITE_RESULT, (event, message) => {
       const { datasetSize, benchmarkCount, result } = message;
@@ -224,14 +225,14 @@ app.whenReady().then(async () => {
 
     setupLocalFilesNormalizerProxy();
 
-    app.on("activate", function () {
-      // On macOS it's common to re-create a window in the app when the
-      // dock icon is clicked and there are no other windows open.
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-        createNodeIntegrationWindow();
-      }
-    });
+    // app.on("activate", function () {
+    //   // On macOS it's common to re-create a window in the app when the
+    //   // dock icon is clicked and there are no other windows open.
+    //   if (BrowserWindow.getAllWindows().length === 0) {
+    //     createWindow();
+    //     // createNodeIntegrationWindow();
+    //   }
+    // });
   } catch (e) {
     console.log("error", e);
   }
