@@ -242,17 +242,18 @@ export class SQLiteSocket {
   private static instance: SQLiteSocket | null = null;
   private socketInfoContainer = new AsyncContainer<SocketInfo>();
   private socketInstanceContainer: AsyncContainer<WebSocket> | null = null;
+  private messageHandlers = new Map<number, (e: any) => any>();
   private msgId = 0;
   private constructor() {}
-  
+
   private logInfo(...content: any[]) {
-	const tags = ['socket'];
-	console.log(`[${tags.join('][')}]`, ...content);
+    const tags = ["socket"];
+    console.log(`[${tags.join("][")}]`, ...content);
   }
-  
+
   private logError(...content: any[]) {
-	const tags = ['socket'];
-	console.error(`[${tags.join('][')}]`, ...content);
+    const tags = ["socket"];
+    console.error(`[${tags.join("][")}]`, ...content);
   }
 
   static getInstance() {
@@ -265,7 +266,7 @@ export class SQLiteSocket {
     socketConfig
       .get()
       .then((result) => this.socketInfoContainer.resolve(result))
-	  .then(() => this.logInfo(`Configured`))
+      .then(() => this.logInfo(`Configured`))
       .catch((e) => this.socketInfoContainer.reject(e));
   }
 
@@ -289,16 +290,27 @@ export class SQLiteSocket {
 
     if (this.socketInstanceContainer === null) {
       this.socketInstanceContainer = new AsyncContainer();
-	  const url = `ws://127.0.0.1:${port}`;
-	  this.logInfo(`Create socket to ${url}`);
+      const url = `ws://127.0.0.1:${port}`;
+      this.logInfo(`Create socket to ${url}`);
       const socket = new WebSocket(url);
       socket.onopen = () => {
         this.socketInstanceContainer.resolve(socket);
       };
-	  socket.onerror = (e) => {
-		this.logError(`Websocket error:`, e);
-	  }
-	  return this.socketInstanceContainer.promise;
+      socket.onerror = (e) => {
+        this.logError(`Websocket error:`, e);
+      };
+      socket.onmessage = (e) => {
+        const data = e.data.toString();
+        const parsedData = JSON.parse(data);
+        const { id } = parsedData;
+        const messageHandler = this.messageHandlers.get(id);
+        if (messageHandler) {
+          messageHandler(parsedData);
+        } else {
+          this.logError(`Found no handler for message with id of '${id}'`);
+        }
+      };
+      return this.socketInstanceContainer.promise;
     }
 
     if (!this.socketInstanceContainer.value) {
@@ -331,19 +343,14 @@ export class SQLiteSocket {
       const socket = await this.getSocket();
       socket.send(JSON.stringify(packedData));
 
-      const listener = (e: { data: ReceivedSocketData }) => {
-		const data = e.data.toString();
-        const { id, error, result } = JSON.parse(data);
-        if (id === currentId) {
-          if (callback) {
-            callback(error, result);
-          }
-          socket.removeEventListener("message", listener);
-          resolve();
+      const messageHandler = (data: ReceivedSocketData) => {
+        const { error, result } = data;
+        if (callback) {
+          callback(error, result);
         }
+        resolve();
       };
-
-      socket.addEventListener("message", listener);
+      this.messageHandlers.set(currentId, messageHandler);
     });
   }
 }
