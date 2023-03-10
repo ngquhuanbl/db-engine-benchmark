@@ -322,6 +322,7 @@ export class SQLiteSocket {
           const messageHandler = this.messageHandlers.get(id);
           if (messageHandler) {
             messageHandler(parsedData);
+			this.messageHandlers.delete(id);
           } else {
             this.logError(`Found no handler for message with id of '${id}'`);
           }
