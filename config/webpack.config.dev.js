@@ -710,13 +710,14 @@ module.exports = function (webpackEnv) {
         isEnvDevelopment &&
           require.resolve("react-dev-utils/webpackHotDevClient"),
         // Finally, this is your app's code:
-        paths.nodeIntegrationIndexJs,
+        // paths.nodeIntegrationIndexJs,
+		paths.msgChannelIndexJs,
         // We include the app code last so that if there is a runtime error during
         // initialization, it doesn't blow up the WebpackDevServer client, and
         // changing JS code would still trigger a refresh.
       ].filter(Boolean),
       externals: {
-        sqlite3: 'commonjs2 ' + path.normalize('../nativelibs/sqlite3')
+        sqlite3: 'commonjs2 ' + path.resolve(fs.realpathSync(process.cwd()), 'nativelibs/sqlite3')
       },
     },
   ];

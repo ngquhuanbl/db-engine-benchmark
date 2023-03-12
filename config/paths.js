@@ -66,6 +66,7 @@ module.exports = {
   appNodeModules: resolveApp('node_modules'),
   publicUrlOrPath,
   nodeIntegrationIndexJs: resolveModule(resolveApp, 'src/bootstrap/node-integration'),
+  msgChannelIndexJs: resolveModule(resolveApp, 'src/bootstrap/msg-channel'),
   toolsIndexJS: resolveModule(resolveApp, 'src/bootstrap/tools'),
   toolsBuild: resolveApp('tools-build'),
   toolsTsConfig: resolveApp('tsconfig.tools.json'),

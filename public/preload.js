@@ -12,11 +12,19 @@ const {
 } = require("./channel");
 const sqlite3 = require("./sqlite3");
 
-let socketConfig = null;
-ipcRenderer.on(SOCKET_CONFIG, (_, data) => {
-	socketConfig = data;
-})
+// let socketConfig = null;
+// ipcRenderer.on(SOCKET_CONFIG, (_, data) => {
+//   socketConfig = data;
+// });
 
+const windowLoaded = new Promise((resolve) => {
+  window.onload = resolve;
+});
+
+ipcRenderer.on("port", async (e) => {
+  await windowLoaded;
+  window.postMessage("msg-port", "*", e.ports);
+});
 
 // As an example, here we use the exposeInMainWorld API to expose the browsers
 // and node versions to the main window.
@@ -34,11 +42,11 @@ process.once("loaded", () => {
       close: (connectionID, callback) => sqlite3.close(connectionID, callback),
       run: (connectionID, ...args) => sqlite3.run(connectionID, ...args),
       get: (connectionID, ...args) => {
-		if (sqlite3 === undefined) {
-			console.log('boom');
-		}
-		return sqlite3.get(connectionID, ...args)
-	  },
+        if (sqlite3 === undefined) {
+          console.log("boom");
+        }
+        return sqlite3.get(connectionID, ...args);
+      },
       all: (connectionID, ...args) => sqlite3.all(connectionID, ...args),
       exec: (connectionID, sql, callback) =>
         sqlite3.exec(connectionID, sql, callback),
@@ -47,7 +55,8 @@ process.once("loaded", () => {
     },
   });
   contextBridge.exposeInMainWorld("path", {
-    getDBFilePath: (dbName, convId) => ipcRenderer.invoke(USER_PATH, dbName, convId),
+    getDBFilePath: (dbName, convId) =>
+      ipcRenderer.invoke(USER_PATH, dbName, convId),
     join: (...paths) => ipcRenderer.invoke(JOIN_PATHS, ...paths),
   });
   contextBridge.exposeInMainWorld("__BUNDLENAME__", { value: "renderer" });
@@ -67,14 +76,14 @@ process.once("loaded", () => {
       ipcRenderer.removeListener(MESSAGE, listener),
     sendMessage: (message) => ipcRenderer.send(MESSAGE, message),
   });
-  
+
   contextBridge.exposeInMainWorld("resultHandler", {
-	write: (message) => {
-		ipcRenderer.send(WRITE_RESULT, message);
-	}
-  })
-  
+    write: (message) => {
+      ipcRenderer.send(WRITE_RESULT, message);
+    },
+  });
+
   contextBridge.exposeInMainWorld("socketConfig", {
-	get: () => ipcRenderer.invoke(SOCKET_CONFIG)
-  })
+    get: () => ipcRenderer.invoke(SOCKET_CONFIG),
+  });
 });

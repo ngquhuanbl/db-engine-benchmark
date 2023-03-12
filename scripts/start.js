@@ -39,7 +39,8 @@ if (
   !checkRequiredFiles([
     paths.appHtml,
     paths.appIndexJs,
-    paths.nodeIntegrationIndexJs,
+    // paths.nodeIntegrationIndexJs,
+	paths.msgChannelIndexJs
   ])
 ) {
   process.exit(1);

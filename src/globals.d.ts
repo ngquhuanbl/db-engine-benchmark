@@ -18,7 +18,7 @@ import {
 import { Data } from "./types/shared/data";
 import { Message } from "./types/shared/message-port";
 import { FullResult } from "./helpers/shared/execute/constants";
-import { SocketInfo } from './types/socket';
+import { SocketInfo } from "./types/socket";
 
 declare global {
   var preloadedSQLite3: {
@@ -202,5 +202,9 @@ declare global {
 
   var socketConfig: {
     get: () => Promise<SocketInfo>;
+  };
+
+  var electronMessagePort: {
+    getPort: () => Promise<MessagePort>;
   };
 }

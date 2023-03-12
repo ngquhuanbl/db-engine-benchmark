@@ -5,8 +5,6 @@ import reportWebVitals from "./reportWebVitals";
 
 import { ChakraProvider } from "@chakra-ui/react";
 
-import "./bootstrap/startup";
-
 const root = document.getElementById("root") as HTMLElement;
 
 render(

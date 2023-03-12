@@ -34,12 +34,17 @@ export const DBE_PRELOAD_CROSS = "preload-cross" as const;
 export const DBE_SOCKET_SINGLE = "socket-single" as const;
 export const DBE_SOCKET_CROSS = "socket-cross" as const;
 
+export const DBE_MSG_CHANNEL_SINGLE = "msg-channel-single" as const;
+export const DBE_MSG_CHANNEL_CROSS = "msg-channel-cross" as const;
+
 type DBEngineName =
   | typeof DBE_IDB
   | typeof DBE_PRELOAD_SINGLE
   | typeof DBE_PRELOAD_CROSS
   | typeof DBE_SOCKET_SINGLE
-  | typeof DBE_SOCKET_CROSS;
+  | typeof DBE_SOCKET_CROSS
+  | typeof DBE_MSG_CHANNEL_SINGLE
+  | typeof DBE_MSG_CHANNEL_CROSS;
 
 export type DBEngineResult = Record<
   TestCaseName,
