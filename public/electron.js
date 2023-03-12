@@ -156,7 +156,7 @@ function createMsgChannelWindow() {
       nodeIntegration: true,
       sandbox: false,
     },
-    //   show: false,
+      show: false,
   });
 
   // In production, set the initial browser path to the local bundle generated
