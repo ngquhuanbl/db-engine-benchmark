@@ -7,5 +7,7 @@ export enum ActionTypes {
 	READ_BY_LIMIT = 4,
 	READ_BY_RANGE = 5,
 	READ_FROM_END_SOURCE = 6,
-	READ_BY_NON_INDEX = 7
+	READ_BY_NON_INDEX = 7,
+	UPDATE = 8,
+	DELETE = 9
 }

@@ -34,16 +34,25 @@ export interface ReadByIndexResult {
 }
 
 export interface ReadByNonIndexResult {
-	nTransactionAverage: number | null;
-	nTransactionSum: number | null;
-	oneTransactionAverage: number | null;
-	oneTransactionSum: number | null;
-  }
-  
+  nTransactionAverage: number | null;
+  nTransactionSum: number | null;
+  oneTransactionAverage: number | null;
+  oneTransactionSum: number | null;
+}
 
 export interface ReadByLimitResult {
   nTransactionAverage: number | null;
   nTransactionSum: number | null;
   oneTransactionAverage: number | null;
   oneTransactionSum: number | null;
+}
+
+export interface UpdateResult {
+  nTransaction: number | null;
+  oneTransaction: number | null;
+}
+
+export interface DeleteResult {
+  nTransaction: number | null;
+  oneTransaction: number | null;
 }

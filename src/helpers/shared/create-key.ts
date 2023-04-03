@@ -1,5 +1,6 @@
+import memoize from "fast-memoize";
 import { MSG_ID_LENGTH } from "../../constants/dataset";
 
-export function createMsgId(value: number) {
+export const createMsgId = memoize((value: number) => {
 	return `${value}`.padStart(MSG_ID_LENGTH, '0');
-}
+})

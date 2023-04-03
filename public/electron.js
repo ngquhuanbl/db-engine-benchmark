@@ -2,7 +2,15 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const url = require("url");
-const { USER_PATH, JOIN_PATHS, MESSAGE, LOAD_DATA, LOAD_DATA_PROGRESS } = require("./channel");
+const fs = require("fs");
+const {
+  USER_PATH,
+  JOIN_PATHS,
+  MESSAGE,
+  LOAD_DATA,
+  LOAD_DATA_PROGRESS,
+  WRITE_RESULT
+} = require("./channel");
 const { DataLoaderImpl } = require("./data-loader");
 
 // Create the native browser window.
@@ -52,7 +60,7 @@ function createNodeIntegrationWindow() {
       contextIsolation: false,
       nodeIntegration: true,
     },
-    show: false,
+    // show: false,
   });
 
   // In production, set the initial browser path to the local bundle generated
@@ -111,8 +119,47 @@ app.whenReady().then(() => {
     ipcMain.handle(LOAD_DATA, (_, datasetSize) => {
       const dataLoader = DataLoaderImpl.getInstance();
       return dataLoader.getDataset(datasetSize, (value) => {
-		mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
-	  });
+        mainWindow.webContents.send(LOAD_DATA_PROGRESS, value);
+      });
+    });
+
+    ipcMain.on(WRITE_RESULT, (event, message) => {
+      const { datasetSize, benchmarkCount, result } = message;
+      if (!(datasetSize && benchmarkCount && result)) {
+        console.error("Invalid write-result message");
+        return;
+      }
+
+      const fileName = `${datasetSize}_${benchmarkCount}.json`;
+      const userPath = app.getPath("userData");
+      const resultDir = path.join(userPath, "results");
+      const filePath = path.join(resultDir, fileName);
+
+      if (!fs.existsSync(resultDir)) {
+        fs.mkdirSync(resultDir);
+      }
+
+      let data = {};
+
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+        data = JSON.parse(buffer);
+      }
+
+      data = {
+        ...data,
+        ...result,
+      };
+
+      const method = Object.keys(result)[0];
+
+      const serializedData = JSON.stringify(data);
+
+      console.log(`=======================================`);
+      console.log(`[▶️][${method}] Writing result file: ${filePath}`);
+      fs.writeFileSync(filePath, serializedData);
+      console.log(`[✅][${method}] ${filePath} `);
+      console.log(`=======================================`);
     });
 
     setupLocalFilesNormalizerProxy();
@@ -126,7 +173,7 @@ app.whenReady().then(() => {
       }
     });
   } catch (e) {
-    console.log('error', e);
+    console.log("error", e);
   }
 });
 

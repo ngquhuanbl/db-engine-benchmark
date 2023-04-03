@@ -8,8 +8,11 @@ import {
   readByRange,
   readFromEndSourceCount,
   readByNonIndex,
+  updateItem,
+  deleteItem
 } from "../helpers/node-integration/sqlite/actions";
 import {
+	DeleteMessageResult,
   ReadAllMessageResult,
   ReadByIndexMessageResult,
   ReadByLimitMessageResult,
@@ -17,6 +20,7 @@ import {
   ReadByRangeMessageResult,
   ReadFromEndSourceMessageResult,
   SingleReadWriteMessageResult,
+  UpdateMessageResult,
 } from "../types/shared/message-port";
 import "./global";
 
@@ -184,6 +188,58 @@ messageBroker.addMessageListener(function (_, request) {
         )
           .then((result) => {
             const message: ReadFromEndSourceMessageResult = {
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              result,
+            };
+            messageBroker.sendMessage(message);
+          })
+          .catch((error) =>
+            messageBroker.sendMessage({
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              error,
+            })
+          );
+        break;
+      }
+	  case ActionTypes.UPDATE: {
+        const { datasetSize, benchmarkCount, readUsingBatch, readBatchSize } =
+          dataObj;
+        updateItem(
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize
+        )
+          .then((result) => {
+            const message: UpdateMessageResult = {
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              result,
+            };
+            messageBroker.sendMessage(message);
+          })
+          .catch((error) =>
+            messageBroker.sendMessage({
+              id: msgId,
+              type: MessageTypes.RESPONSE,
+              error,
+            })
+          );
+        break;
+      }
+	  case ActionTypes.DELETE: {
+        const { datasetSize, benchmarkCount, readUsingBatch, readBatchSize } =
+          dataObj;
+        deleteItem(
+          benchmarkCount,
+          datasetSize,
+          readUsingBatch,
+          readBatchSize
+        )
+          .then((result) => {
+            const message: DeleteMessageResult = {
               id: msgId,
               type: MessageTypes.RESPONSE,
               result,

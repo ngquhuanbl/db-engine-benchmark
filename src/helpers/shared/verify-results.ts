@@ -1,5 +1,6 @@
 import { IDBRange } from "../../types/shared/indexedDB";
 import { createMsgId } from "./create-key";
+import { getMsgContentForUpdate } from "./generate-data";
 
 export const verifyReadSingleItem = (
   results: string[],
@@ -38,7 +39,7 @@ export const verifyReadAll = (
   datasetSize: number,
   count: number
 ): boolean => {
-  if (!VERIFY_MODE_ON) return;  
+  if (!VERIFY_MODE_ON) return;
 
   const logError = (content: string) => {
     const tags = "[verify][read-all]";
@@ -70,7 +71,7 @@ export const verifyReadByIndexField = (
   resultLengths: Array<number>,
   indexedKeys: string[]
 ) => {
-  if (!VERIFY_MODE_ON) return;  
+  if (!VERIFY_MODE_ON) return;
 
   const logError = (content: string) => {
     const tags = "[verify][read-by-index]";
@@ -149,7 +150,7 @@ export const verifyReadByRange = (
   ranges: IDBRange<string>[]
 ) => {
   if (!VERIFY_MODE_ON) return;
-  
+
   const logError = (content: string) => {
     const tags = "[verify][read-by-range]";
     console.error(tags, content);
@@ -211,8 +212,8 @@ export const verifyReadByLimit = (
   limit: number
 ) => {
   if (!VERIFY_MODE_ON) return;
-    
-  console.log({ results, limit, count })
+
+  console.log({ results, limit, count });
 
   const logError = (content: string) => {
     const tags = "[verify][read-by-limit]";
@@ -236,3 +237,52 @@ export const verifyReadByLimit = (
     }
   }
 };
+
+export const verifyUpdateItem = (
+  results: { msgId: string, content: string }[],
+  datasetSize: number
+): boolean => {
+  if (!VERIFY_MODE_ON) return;
+
+  const logError = (content: string) => {
+    const tags = "[verify][update-item]";
+    console.error(tags, content);
+  };
+
+  if (results.length !== datasetSize) {
+    logError(
+      `Insufficient size of total entries - ${JSON.stringify({
+        expectedSize: datasetSize,
+        actualSize: results.length,
+      })}`
+    );
+    return;
+  }
+
+  let i = 0;
+  while (i < datasetSize) {
+    const contentA = getMsgContentForUpdate(i);
+    const { msgId , content: contentB } = results[i];
+    if (contentA !== contentB) {
+      logError(`Unsuccessfully update entry with msgId of '${msgId}'`);
+      return;
+    }
+    i += 1;
+  }
+};
+
+export const verifyDeleteItem = (
+	resultLength: number
+  ): boolean => {
+	if (!VERIFY_MODE_ON) return;
+  
+	const logError = (content: string) => {
+	  const tags = "[verify][delete-item]";
+	  console.error(tags, content);
+	};
+	
+	if (resultLength !== 0) {
+		logError(`Unsuccessfully delete all items`);
+		return;
+	}
+  };

@@ -80,12 +80,12 @@ export function openSQLiteDatabase() {
 export async function resetSQLiteData(conn: Database) {
   return new Promise<void>((resolve, reject) => {
     const query = `DELETE FROM ${escapeStr(TABLE_NAME)}`;
-    conn.exec(query, (error) =>
-      error
-        ? reject(
-            patchJSError(error, { tags: ["preload-sqlite", "reset-data"] })
-          )
-        : resolve()
-    );
+    conn.exec(query, (error) => {
+      if (error) {
+        reject(patchJSError(error, { tags: ["preload-sqlite", "reset-data"] }));
+      } else {
+        resolve();
+      }
+    });
   });
 }

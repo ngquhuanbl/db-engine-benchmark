@@ -13,6 +13,27 @@ export const getMsgStatus = memoize((index: number): number => {
   return Math.round(Math.random() * 10) * (isNegative ? -1 : 1);
 });
 
+export const getMsgContentForUpdate = memoize((entryIndex: number) => {
+	const content = faker.lorem.paragraph();
+	return content;
+})
+
+
+export const getMsgDeleteMsgId = memoize((datasetSize: number) => {
+	const res = Array.from({ length: datasetSize }).map((_, index) => createMsgId(index));
+	
+	// Fisher-Yates Suffle
+	let currentIndex= datasetSize, randomIndex;
+	while (currentIndex != 0) {
+		randomIndex = Math.floor(Math.random() * currentIndex);
+		currentIndex--;
+		
+		[res[currentIndex], res[randomIndex]] = [res[randomIndex], res[currentIndex]];
+	}
+	
+	return res;
+})
+
 export const getIsErrorInfo = memoize((index: number): boolean => {
   return !!Math.round(Math.random());
 });

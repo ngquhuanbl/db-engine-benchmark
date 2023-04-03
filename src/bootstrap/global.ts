@@ -1,3 +1,3 @@
-window.VERIFY_MODE_ON = false;
+window.VERIFY_MODE_ON = true;
 
 export {};

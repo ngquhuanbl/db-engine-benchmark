@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "react-dom";
-import App from "./App";
+import App from "./App.new";
 import reportWebVitals from "./reportWebVitals";
 
 import { ChakraProvider } from "@chakra-ui/react";
