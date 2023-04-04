@@ -6,26 +6,32 @@ export const TCN_READ_FROM_END_SOURCE = "readFromEndSource" as const;
 export const TCN_READ_BY_INDEX = "readByIndex" as const;
 export const TCN_READ_BY_LIMIT = "readByLimit" as const;
 export const TCN_READ_BY_NON_INDEX = "readByNonIndex" as const;
+export const TCN_UPDATE = "update" as const;
+export const TCN_DELETE = "delete" as const;
 
 export type TestCaseName =
   | typeof TCN_SINGLE_WRITE
   | typeof TCN_SINGLE_READ
-  | typeof TCN_READ_BY_RANGE
-  | typeof TCN_READ_ALL
-  | typeof TCN_READ_FROM_END_SOURCE
-  | typeof TCN_READ_BY_INDEX
-  | typeof TCN_READ_BY_LIMIT
-  | typeof TCN_READ_BY_NON_INDEX;
+//   | typeof TCN_READ_BY_RANGE
+//   | typeof TCN_READ_ALL
+//   | typeof TCN_READ_FROM_END_SOURCE
+//   | typeof TCN_READ_BY_INDEX
+//   | typeof TCN_READ_BY_LIMIT
+//   | typeof TCN_READ_BY_NON_INDEX
+  | typeof TCN_UPDATE
+  | typeof TCN_DELETE;
 
 export const TEST_CASE_NAMES: TestCaseName[] = [
   "singleWrite",
   "singleRead",
-  "readByRange",
-  "readAll",
-  "readFromEndSource",
-  "readByIndex",
-  "readByLimit",
-  "readByNonIndex",
+//   "readByRange",
+//   "readAll",
+//   "readFromEndSource",
+//   "readByIndex",
+//   "readByLimit",
+//   "readByNonIndex",
+  "update",
+  "update"
 ];
 
 export const DBE_IDB = "idb" as const;

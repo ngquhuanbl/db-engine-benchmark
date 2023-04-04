@@ -60,27 +60,11 @@ export const formatDBEngineResult = (
 			nTransaction: 0,
 			oneTransaction: 0
 		},
-		readByRange: {
+		update: {
 			nTransaction: 0,
 			oneTransaction: 0
 		},
-		readAll: {
-			nTransaction: 0,
-			oneTransaction: 0
-		},
-		readFromEndSource: {
-			nTransaction: 0,
-			oneTransaction: 0
-		},
-		readByIndex: {
-			nTransaction: 0,
-			oneTransaction: 0
-		},
-		readByLimit: {
-			nTransaction: 0,
-			oneTransaction: 0
-		},
-		readByNonIndex: {
+		delete: {
 			nTransaction: 0,
 			oneTransaction: 0
 		}

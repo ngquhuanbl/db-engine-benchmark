@@ -5,13 +5,17 @@ import { getMsgPort } from "../helpers/shared/get-msg-port";
 // @ts-ignore
 getMsgPort().then((port) => {
   port.onmessage = (event) => {
-    debugger;
     const msg = event.data;
     try {
       const { id, filename, method, params } = msg;
       const callback = (error, result) => {
-        // @ts-ignore
-        port.postMessage({ id, error, result });
+		try {
+			// @ts-ignore
+			port.postMessage({ id, error, result });
+		}
+		catch(e) {
+			debugger;
+		}
       };
       switch (method) {
         case "close": {

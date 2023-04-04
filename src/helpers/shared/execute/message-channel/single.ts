@@ -1,25 +1,13 @@
 import { DBEngineResult } from "../constants";
 import * as MsgChannelExecutor from "../../../renderer/msg-channel/actions";
-import {
-  DEFAULT_LIMIT,
-  DEFAULT_NUM_OF_INDEXED_KEYS,
-  DEFAULT_NUM_OF_RANGE,
-  DEFAULT_READ_BATCH_SIZE,
-  DEFAULT_READ_BY_LIMIT_COUNT,
-  DEFAULT_READ_BY_NON_INDEX_COUNT,
-  DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
-} from "../../../../constants/dataset";
-import {
-  DEFAULT_READ_USING_BATCH,
-} from "../../../../constants/modes";
+import { DEFAULT_READ_BATCH_SIZE } from "../../../../constants/dataset";
+import { DEFAULT_READ_USING_BATCH } from "../../../../constants/modes";
 import {
   addConsoleLog,
   formatDBEngineResult,
-  getIndexedKeys,
   removeConsoleLog,
   verifyDBEngineResult,
 } from "../helper";
-import { calculateRange } from "../../calculate-range";
 
 export const execute = async (
   datasetSize: number,
@@ -35,27 +23,11 @@ export const execute = async (
       nTransaction: 0,
       oneTransaction: 0,
     },
-    readByRange: {
+    update: {
       nTransaction: 0,
       oneTransaction: 0,
     },
-    readAll: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readFromEndSource: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByIndex: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByLimit: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByNonIndex: {
+    delete: {
       nTransaction: 0,
       oneTransaction: 0,
     },
@@ -89,31 +61,10 @@ export const execute = async (
   }
   //#endregion
 
-  //#region Read by range
+  //#region Update
   {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readByRange(
-        benchmarkCount,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          ranges: calculateRange(datasetSize, DEFAULT_NUM_OF_RANGE),
-        }
-      );
-
-    finalResult["readByRange"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read all
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readAll(
+    const { nTransaction, oneTransaction } =
+      await MsgChannelExecutor.updateItem(
         benchmarkCount,
         datasetSize,
         DEFAULT_READ_USING_BATCH,
@@ -122,98 +73,31 @@ export const execute = async (
         removeConsoleLog
       );
 
-    finalResult["readAll"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
+    finalResult["update"] = {
+      nTransaction,
+      oneTransaction,
     };
   }
   //#endregion
 
-  //#region Read from end source
+  //#region Delete
   {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readFromEndSource(
+    const { nTransaction, oneTransaction } =
+      await MsgChannelExecutor.deleteItem(
         benchmarkCount,
         datasetSize,
         DEFAULT_READ_USING_BATCH,
         DEFAULT_READ_BATCH_SIZE,
         addConsoleLog,
-        removeConsoleLog,
-        {
-          readFromEndSourceCount:
-            DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
-        }
+        removeConsoleLog
       );
 
-    finalResult["readFromEndSource"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
+    finalResult["delete"] = {
+      nTransaction,
+      oneTransaction,
     };
   }
   //#endregion
-
-  //#region Read by index
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readByIndex(
-        benchmarkCount,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          keys: getIndexedKeys(DEFAULT_NUM_OF_INDEXED_KEYS),
-        }
-      );
-
-    finalResult["readByIndex"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read by limit
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readByLimit(
-        benchmarkCount,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          limit: DEFAULT_LIMIT,
-          count: DEFAULT_READ_BY_LIMIT_COUNT,
-        }
-      );
-
-    finalResult["readByLimit"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read by non-index
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await MsgChannelExecutor.readByNonIndex(
-        benchmarkCount,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          count: DEFAULT_READ_BY_NON_INDEX_COUNT,
-        }
-      );
-
-    finalResult["readByNonIndex"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
 
   verifyDBEngineResult(finalResult);
 

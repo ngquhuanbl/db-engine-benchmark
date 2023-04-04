@@ -1,4 +1,4 @@
-// import { faker } from "@faker-js/faker";
+import { faker } from "@faker-js/faker";
 import memoize from "fast-memoize";
 
 import { Data, MessageSrc } from "../../types/shared/data";
@@ -18,6 +18,36 @@ export const getMsgStatus = memoize((index: number): number => {
 
 export const getIsErrorInfo = memoize((index: number): boolean => {
   return !!Math.round(Math.random());
+});
+
+export const getMsgContentForUpdate = memoize((entryIndex: number) => {
+  const content = faker.lorem.paragraph();
+  return content;
+});
+
+export const getMsgDeleteInfo = memoize((datasetSize: number) => {
+  const res = Array.from({ length: datasetSize }).map((_, index) => {
+    const { msgId, toUid } = getData(index);
+    return {
+      msgId,
+      toUid,
+    };
+  });
+
+  // Fisher-Yates Suffle
+  let currentIndex = datasetSize,
+    randomIndex;
+  while (currentIndex != 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+
+    [res[currentIndex], res[randomIndex]] = [
+      res[randomIndex],
+      res[currentIndex],
+    ];
+  }
+
+  return res;
 });
 
 // export function generateData(size: number): Array<Data> {

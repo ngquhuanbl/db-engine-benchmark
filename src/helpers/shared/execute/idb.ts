@@ -35,27 +35,11 @@ export const execute = async (
       nTransaction: 0,
       oneTransaction: 0,
     },
-    readByRange: {
+    update: {
       nTransaction: 0,
       oneTransaction: 0,
     },
-    readAll: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readFromEndSource: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByIndex: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByLimit: {
-      nTransaction: 0,
-      oneTransaction: 0,
-    },
-    readByNonIndex: {
+    delete: {
       nTransaction: 0,
       oneTransaction: 0,
     },
@@ -90,137 +74,43 @@ export const execute = async (
   }
   //#endregion
 
-  //#region Read by range
+  //#region Update
   {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readByRange(
-        benchmarkCount,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          ranges: calculateRange(datasetSize, DEFAULT_NUM_OF_RANGE),
-        }
-      );
+    const { nTransaction, oneTransaction } = await IndexedDBExecutor.updateItem(
+      benchmarkCount,
+      datasetSize,
+      DEFAULT_RELAXED_DURABILITY_MODE_ON,
+      DEFAULT_READ_USING_BATCH,
+      DEFAULT_READ_BATCH_SIZE,
+      addConsoleLog,
+      removeConsoleLog
+    );
 
-    finalResult["readByRange"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
+    finalResult["update"] = {
+      nTransaction,
+      oneTransaction,
     };
   }
   //#endregion
 
-  //#region Read all
+  //#region Delete
   {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readAll(
-        benchmarkCount,
-        datasetSize,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog
-      );
+    const { nTransaction, oneTransaction } = await IndexedDBExecutor.deleteItem(
+      benchmarkCount,
+      datasetSize,
+      DEFAULT_RELAXED_DURABILITY_MODE_ON,
+      DEFAULT_READ_USING_BATCH,
+      DEFAULT_READ_BATCH_SIZE,
+      addConsoleLog,
+      removeConsoleLog
+    );
 
-    finalResult["readAll"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
+    finalResult["delete"] = {
+      nTransaction,
+      oneTransaction,
     };
   }
   //#endregion
-
-  //#region Read from end source
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readFromEndSource(
-        benchmarkCount,
-        datasetSize,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          readFromEndSourceCount:
-            DEFAULT_READ_FROM_THE_END_OF_SOURCE_DATA_COUNT,
-        }
-      );
-
-    finalResult["readFromEndSource"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read by index
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readByIndex(
-        benchmarkCount,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          keys: getIndexedKeys(DEFAULT_NUM_OF_INDEXED_KEYS),
-        }
-      );
-
-    finalResult["readByIndex"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read by limit
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readByLimit(
-        benchmarkCount,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          limit: DEFAULT_LIMIT,
-          count: DEFAULT_READ_BY_LIMIT_COUNT,
-        }
-      );
-
-    finalResult["readByLimit"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
-  //#endregion
-
-  //#region Read by non-index
-  {
-    const { nTransactionSum, oneTransactionSum } =
-      await IndexedDBExecutor.readByNonIndex(
-        benchmarkCount,
-        DEFAULT_RELAXED_DURABILITY_MODE_ON,
-        DEFAULT_READ_USING_BATCH,
-        DEFAULT_READ_BATCH_SIZE,
-        addConsoleLog,
-        removeConsoleLog,
-        {
-          count: DEFAULT_READ_BY_NON_INDEX_COUNT,
-        }
-      );
-
-    finalResult["readByNonIndex"] = {
-      nTransaction: nTransactionSum,
-      oneTransaction: oneTransactionSum,
-    };
-  }
 
   verifyDBEngineResult(finalResult);
 

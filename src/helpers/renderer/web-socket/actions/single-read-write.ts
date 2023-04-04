@@ -7,7 +7,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
 // import { DataLoaderImpl } from "../../../shared/data-loader";
 import { escapeStr } from "../../../shared/escape-str";
-import { getData } from "../../../shared/generate-data";
+import { getAllPossibleConvIds, getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { verifyReadSingleItem } from "../../../shared/verify-result";
 import { openSQLiteDatabase, resetSQLiteData } from "../common";
@@ -21,6 +21,15 @@ const originalExecute = async (
 ): Promise<SingleReadWriteResult> => {
   //   const dataLoader = DataLoaderImpl.getInstance();
   //   const data = await dataLoader.getDataset(datasetSize);
+
+  const allPossibleConvIds = getAllPossibleConvIds();
+
+  let partitionKeys: string[] = [];
+  if (PARTITION_MODE) {
+    partitionKeys = [SELECTED_PARTITION_KEY];
+  } else {
+    partitionKeys = [...allPossibleConvIds];
+  }
 
   async function resetData() {
     const logId = addLog("[websocket-sqlite] reset data");
@@ -48,6 +57,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const convId = jsData.toUid;
+	  
+	  if (!partitionKeys.includes(convId)) continue;
+	  
       const params: any = {};
       const fieldList: string[] = [];
       const valuesPlaceholder: string[] = [];
@@ -112,6 +124,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const { toUid: partitionKey } = item;
+	  
+	  if (!partitionKeys.includes(partitionKey)) continue;
+	  
       const params: any[] = [];
       const primaryKeyConditions: string[] = [];
       PRIMARY_KEYS.forEach((key) => {
@@ -161,209 +176,209 @@ const originalExecute = async (
   //#endregion
 
   // Reset data
-//   await resetData();
+  //   await resetData();
 
   let oneTransactionRead = -1;
   let oneTransactionWrite = -1;
 
-//   //#region one transaction
-//   let oneTransactionRead = -1;
-//   let oneTransactionWrite = -1;
+  //   //#region one transaction
+  //   let oneTransactionRead = -1;
+  //   let oneTransactionWrite = -1;
 
-//   // WRITE
-//   {
-//     const logId = addLog(
-//       "[websocket-sqlite][single-read-write][one-transaction] write"
-//     );
+  //   // WRITE
+  //   {
+  //     const logId = addLog(
+  //       "[websocket-sqlite][single-read-write][one-transaction] write"
+  //     );
 
-//     const groupByConvId: Record<string, { query: string; params: any }[]> = {};
-//     for (let i = 0; i < datasetSize; i += 1) {
-//       const jsData = getData(i);
-//       const { toUid: partitionKey } = jsData;
-//       if (groupByConvId[partitionKey] === undefined) {
-//         groupByConvId[partitionKey] = [];
-//       }
+  //     const groupByConvId: Record<string, { query: string; params: any }[]> = {};
+  //     for (let i = 0; i < datasetSize; i += 1) {
+  //       const jsData = getData(i);
+  //       const { toUid: partitionKey } = jsData;
+  //       if (groupByConvId[partitionKey] === undefined) {
+  //         groupByConvId[partitionKey] = [];
+  //       }
 
-//       const params: any = {};
-//       const fieldList: string[] = [];
-//       const valuesPlaceholder: string[] = [];
-//       COLUMN_LIST_INFO.forEach(({ name, type }) => {
-//         fieldList.push(name);
-//         valuesPlaceholder.push(`$${name}`);
-//         const jsValue = jsData[name];
+  //       const params: any = {};
+  //       const fieldList: string[] = [];
+  //       const valuesPlaceholder: string[] = [];
+  //       COLUMN_LIST_INFO.forEach(({ name, type }) => {
+  //         fieldList.push(name);
+  //         valuesPlaceholder.push(`$${name}`);
+  //         const jsValue = jsData[name];
 
-//         if (type === "TEXT") {
-//           if (typeof jsValue !== "string")
-//             params[`$${name}`] = JSON.stringify(jsValue);
-//           else params[`$${name}`] = jsValue;
-//         } else {
-//           params[`$${name}`] = jsValue;
-//         }
-//       });
+  //         if (type === "TEXT") {
+  //           if (typeof jsValue !== "string")
+  //             params[`$${name}`] = JSON.stringify(jsValue);
+  //           else params[`$${name}`] = jsValue;
+  //         } else {
+  //           params[`$${name}`] = jsValue;
+  //         }
+  //       });
 
-//       const query = `INSERT OR REPLACE INTO ${escapeStr(
-//         TABLE_NAME
-//       )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+  //       const query = `INSERT OR REPLACE INTO ${escapeStr(
+  //         TABLE_NAME
+  //       )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
 
-//       groupByConvId[partitionKey].push({
-//         query,
-//         params,
-//       });
-//     }
+  //       groupByConvId[partitionKey].push({
+  //         query,
+  //         params,
+  //       });
+  //     }
 
-//     const requestsData: Array<[string, { query: string; params: any }[]]> =
-//       Object.entries(groupByConvId);
+  //     const requestsData: Array<[string, { query: string; params: any }[]]> =
+  //       Object.entries(groupByConvId);
 
-//     const start = performance.now();
-//     await Promise.all(
-//       requestsData.map(
-//         ([partitionKey, data]) =>
-//           new Promise<void>((resolve, reject) => {
-//             openSQLiteDatabase(partitionKey).then((conn) => {
-//               conn.serialize((conn) => {
-//                 conn.run("BEGIN TRANSACTION", (error) => {
-//                   if (error)
-//                     reject(
-//                       patchJSError(error, {
-//                         tags: [
-//                           "websocket-sqlite",
-//                           "1-transaction",
-//                           "write",
-//                           "begin-transaction",
-//                         ],
-//                       })
-//                     );
-//                 });
-//                 data.forEach(({ query, params }) => {
-//                   conn.run(query, params, (error) => {
-//                     if (error)
-//                       reject(
-//                         patchJSError(error, {
-//                           tags: ["websocket-sqlite", "1-transaction", "write"],
-//                         })
-//                       );
-//                   });
-//                 });
-//                 conn.run("COMMIT TRANSACTION", (error) => {
-//                   if (error)
-//                     reject(
-//                       patchJSError(error, {
-//                         tags: [
-//                           "websocket-sqlite",
-//                           "1-transaction",
-//                           "write",
-//                           "commit-transaction",
-//                         ],
-//                       })
-//                     );
-//                   else resolve();
-//                 });
-//               });
-//             });
-//           })
-//       )
-//     );
-//     const end = performance.now();
+  //     const start = performance.now();
+  //     await Promise.all(
+  //       requestsData.map(
+  //         ([partitionKey, data]) =>
+  //           new Promise<void>((resolve, reject) => {
+  //             openSQLiteDatabase(partitionKey).then((conn) => {
+  //               conn.serialize((conn) => {
+  //                 conn.run("BEGIN TRANSACTION", (error) => {
+  //                   if (error)
+  //                     reject(
+  //                       patchJSError(error, {
+  //                         tags: [
+  //                           "websocket-sqlite",
+  //                           "1-transaction",
+  //                           "write",
+  //                           "begin-transaction",
+  //                         ],
+  //                       })
+  //                     );
+  //                 });
+  //                 data.forEach(({ query, params }) => {
+  //                   conn.run(query, params, (error) => {
+  //                     if (error)
+  //                       reject(
+  //                         patchJSError(error, {
+  //                           tags: ["websocket-sqlite", "1-transaction", "write"],
+  //                         })
+  //                       );
+  //                   });
+  //                 });
+  //                 conn.run("COMMIT TRANSACTION", (error) => {
+  //                   if (error)
+  //                     reject(
+  //                       patchJSError(error, {
+  //                         tags: [
+  //                           "websocket-sqlite",
+  //                           "1-transaction",
+  //                           "write",
+  //                           "commit-transaction",
+  //                         ],
+  //                       })
+  //                     );
+  //                   else resolve();
+  //                 });
+  //               });
+  //             });
+  //           })
+  //       )
+  //     );
+  //     const end = performance.now();
 
-//     oneTransactionWrite = end - start;
+  //     oneTransactionWrite = end - start;
 
-//     removeLog(logId);
-//   }
+  //     removeLog(logId);
+  //   }
 
-//   // READ
-//   {
-//     const logId = addLog(
-//       "[websocket-sqlite][single-read-write][one-transaction] read"
-//     );
+  //   // READ
+  //   {
+  //     const logId = addLog(
+  //       "[websocket-sqlite][single-read-write][one-transaction] read"
+  //     );
 
-//     const groupByConvId: Record<string, { query: string; params: any }[]> = {};
-//     for (let i = 0; i < datasetSize; i += 1) {
-//       const jsData = getData(i);
-//       const { toUid } = jsData;
-//       if (groupByConvId[toUid] === undefined) {
-//         groupByConvId[toUid] = [];
-//       }
+  //     const groupByConvId: Record<string, { query: string; params: any }[]> = {};
+  //     for (let i = 0; i < datasetSize; i += 1) {
+  //       const jsData = getData(i);
+  //       const { toUid } = jsData;
+  //       if (groupByConvId[toUid] === undefined) {
+  //         groupByConvId[toUid] = [];
+  //       }
 
-//       const params: any[] = [];
-//       const primaryKeyConditions: string[] = [];
-//       PRIMARY_KEYS.forEach((key) => {
-//         primaryKeyConditions.push(`${escapeStr(key)}=?`);
-//         params.push(jsData[key]);
-//       });
+  //       const params: any[] = [];
+  //       const primaryKeyConditions: string[] = [];
+  //       PRIMARY_KEYS.forEach((key) => {
+  //         primaryKeyConditions.push(`${escapeStr(key)}=?`);
+  //         params.push(jsData[key]);
+  //       });
 
-//       const query = `SELECT * FROM ${escapeStr(
-//         TABLE_NAME
-//       )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+  //       const query = `SELECT * FROM ${escapeStr(
+  //         TABLE_NAME
+  //       )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-//       groupByConvId[toUid].push({ query, params });
-//     }
-//     const requestsData: Array<[string, { query: string; params: any }[]]> =
-//       Object.entries(groupByConvId);
+  //       groupByConvId[toUid].push({ query, params });
+  //     }
+  //     const requestsData: Array<[string, { query: string; params: any }[]]> =
+  //       Object.entries(groupByConvId);
 
-//     const checksumData: string[] = [];
+  //     const checksumData: string[] = [];
 
-//     const start = performance.now();
-//     await Promise.all(
-//       requestsData.map(
-//         ([partitionKey, data]) =>
-//           new Promise<void>((resolve, reject) => {
-//             openSQLiteDatabase(partitionKey).then((conn) =>
-//               conn.serialize((conn) => {
-//                 conn.run("BEGIN TRANSACTION", (error) => {
-//                   if (error)
-//                     reject(
-//                       patchJSError(error, {
-//                         tags: [
-//                           "websocket-sqlite",
-//                           "1-transaction",
-//                           "read",
-//                           "begin-transaction",
-//                         ],
-//                       })
-//                     );
-//                 });
-//                 data.forEach(({ query, params }) => {
-//                   conn.get(query, params, (error, row) => {
-//                     if (error)
-//                       reject(
-//                         patchJSError(error, {
-//                           tags: ["websocket-sqlite", "1-transaction", "read"],
-//                         })
-//                       );
-//                     else {
-//                       if (row) checksumData.push(row.msgId);
-//                     }
-//                   });
-//                 });
+  //     const start = performance.now();
+  //     await Promise.all(
+  //       requestsData.map(
+  //         ([partitionKey, data]) =>
+  //           new Promise<void>((resolve, reject) => {
+  //             openSQLiteDatabase(partitionKey).then((conn) =>
+  //               conn.serialize((conn) => {
+  //                 conn.run("BEGIN TRANSACTION", (error) => {
+  //                   if (error)
+  //                     reject(
+  //                       patchJSError(error, {
+  //                         tags: [
+  //                           "websocket-sqlite",
+  //                           "1-transaction",
+  //                           "read",
+  //                           "begin-transaction",
+  //                         ],
+  //                       })
+  //                     );
+  //                 });
+  //                 data.forEach(({ query, params }) => {
+  //                   conn.get(query, params, (error, row) => {
+  //                     if (error)
+  //                       reject(
+  //                         patchJSError(error, {
+  //                           tags: ["websocket-sqlite", "1-transaction", "read"],
+  //                         })
+  //                       );
+  //                     else {
+  //                       if (row) checksumData.push(row.msgId);
+  //                     }
+  //                   });
+  //                 });
 
-//                 conn.run("COMMIT TRANSACTION", (error) => {
-//                   if (error)
-//                     reject(
-//                       patchJSError(error, {
-//                         tags: [
-//                           "websocket-sqlite",
-//                           "1-transaction",
-//                           "read",
-//                           "commit-transaction",
-//                         ],
-//                       })
-//                     );
-//                   else resolve();
-//                 });
-//               })
-//             );
-//           })
-//       )
-//     );
-//     const end = performance.now();
-//     oneTransactionRead = end - start;
+  //                 conn.run("COMMIT TRANSACTION", (error) => {
+  //                   if (error)
+  //                     reject(
+  //                       patchJSError(error, {
+  //                         tags: [
+  //                           "websocket-sqlite",
+  //                           "1-transaction",
+  //                           "read",
+  //                           "commit-transaction",
+  //                         ],
+  //                       })
+  //                     );
+  //                   else resolve();
+  //                 });
+  //               })
+  //             );
+  //           })
+  //       )
+  //     );
+  //     const end = performance.now();
+  //     oneTransactionRead = end - start;
 
-//     verifyReadSingleItem(checksumData, datasetSize);
+  //     verifyReadSingleItem(checksumData, datasetSize);
 
-//     removeLog(logId);
-//   }
+  //     removeLog(logId);
+  //   }
 
-//   //#endregion
+  //   //#endregion
 
   //   conn.close((error) => {
   //     if (error) throw error;

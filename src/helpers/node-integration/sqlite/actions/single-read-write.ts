@@ -7,7 +7,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
 // import { DataLoaderImpl } from "../../../shared/data-loader";
 import { escapeStr } from "../../../shared/escape-str";
-import { getData } from "../../../shared/generate-data";
+import { getAllPossibleConvIds, getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { verifyReadSingleItem } from "../../../shared/verify-result";
 import { addLog, removeLog } from "../../log";
@@ -20,8 +20,14 @@ const originalExecute = async (
 ): Promise<SingleReadWriteResult> => {
   const DB = DAL.getInstance();
 
-  //   const dataLoader = DataLoaderImpl.getInstance();
-  //   const data = await dataLoader.getDataset(datasetSize);
+  const allPossibleConvIds = getAllPossibleConvIds();
+
+  let partitionKeys: string[] = [];
+  if (PARTITION_MODE) {
+    partitionKeys = [SELECTED_PARTITION_KEY];
+  } else {
+    partitionKeys = [...allPossibleConvIds];
+  }
 
   async function resetData() {
     const addLogRequest = addLog("[nodeIntegration-sqlite] reset data");
@@ -51,6 +57,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const convId = jsData.toUid;
+
+      if (!partitionKeys.includes(convId)) continue;
+
       const params: any = {};
       const fieldList: string[] = [];
       const valuesPlaceholder: string[] = [];
@@ -98,7 +107,7 @@ const originalExecute = async (
     const end = performance.now();
     nTransactionWrite = end - start;
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   // READ
@@ -115,6 +124,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const { toUid: partitionKey } = item;
+
+      if (!partitionKeys.includes(partitionKey)) continue;
+
       const params: any[] = [];
       const primaryKeyConditions: string[] = [];
       PRIMARY_KEYS.forEach((key) => {
@@ -158,7 +170,7 @@ const originalExecute = async (
 
     verifyReadSingleItem(checksumData, datasetSize);
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   //#endregion
@@ -180,6 +192,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const { toUid: partitionKey } = jsData;
+
+      if (!partitionKeys.includes(partitionKey)) continue;
+
       if (groupByConvId[partitionKey] === undefined) {
         groupByConvId[partitionKey] = [];
       }
@@ -267,7 +282,7 @@ const originalExecute = async (
 
     oneTransactionWrite = end - start;
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   // READ
@@ -280,6 +295,9 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const { toUid } = jsData;
+
+      if (!partitionKeys.includes(toUid)) continue;
+
       if (groupByConvId[toUid] === undefined) {
         groupByConvId[toUid] = [];
       }
@@ -327,7 +345,11 @@ const originalExecute = async (
                     if (error)
                       reject(
                         patchJSError(error, {
-                          tags: ["nodeIntegration-sqlite", "1-transaction", "read"],
+                          tags: [
+                            "nodeIntegration-sqlite",
+                            "1-transaction",
+                            "read",
+                          ],
                         })
                       );
                     else {
@@ -360,7 +382,7 @@ const originalExecute = async (
 
     verifyReadSingleItem(checksumData, datasetSize);
 
-    addLogRequest.then((logId) => removeLog(logId)) 
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   //#endregion

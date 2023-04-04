@@ -51,6 +51,9 @@ import { MessageTypes } from "./constants/message";
 import { AddLogMessageResult } from "./types/shared/message-port";
 import './bootstrap/global';
 import './helpers/shared/execute';
+import { SQLiteSocket } from "./helpers/renderer/web-socket/library";
+
+SQLiteSocket.getInstance().configure();
 
 let logIdCounter = 0;
 

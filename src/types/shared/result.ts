@@ -47,3 +47,13 @@ export interface ReadByLimitResult {
   oneTransactionAverage: number | null;
   oneTransactionSum: number | null;
 }
+
+export interface UpdateResult {
+	nTransaction: number | null;
+	oneTransaction: number | null;
+  }
+  
+  export interface DeleteResult {
+	nTransaction: number | null;
+	oneTransaction: number | null;
+  }
