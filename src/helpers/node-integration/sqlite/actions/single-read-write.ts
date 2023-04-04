@@ -7,7 +7,7 @@ import { averageFnResults } from "../../../../types/shared/average-objects";
 import { SingleReadWriteResult } from "../../../../types/shared/result";
 // import { DataLoaderImpl } from "../../../shared/data-loader";
 import { escapeStr } from "../../../shared/escape-str";
-import { getData } from "../../../shared/generate-data";
+import { getAllPossibleConvIds, getData } from "../../../shared/generate-data";
 import { patchJSError } from "../../../shared/patch-error";
 import { verifyReadSingleItem } from "../../../shared/verify-result";
 import { addLog, removeLog } from "../../log";
@@ -19,6 +19,15 @@ const originalExecute = async (
   readBatchSize: number
 ): Promise<SingleReadWriteResult> => {
   const DB = DAL.getInstance();
+
+  const allPossibleConvIds = getAllPossibleConvIds();
+
+  let partitionKeys: string[] = [];
+  if (PARTITION_MODE) {
+    partitionKeys = [SELECTED_PARTITION_KEY];
+  } else {
+    partitionKeys = [...allPossibleConvIds];
+  }
 
   //   const dataLoader = DataLoaderImpl.getInstance();
   //   const data = await dataLoader.getDataset(datasetSize);
@@ -51,27 +60,29 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const convId = jsData.toUid;
-      const params: any = {};
-      const fieldList: string[] = [];
-      const valuesPlaceholder: string[] = [];
-      COLUMN_LIST_INFO.forEach(({ name, type }) => {
-        fieldList.push(name);
-        valuesPlaceholder.push(`$${name}`);
-        const jsValue = jsData[name];
+      if (partitionKeys.includes(convId)) {
+        const params: any = {};
+        const fieldList: string[] = [];
+        const valuesPlaceholder: string[] = [];
+        COLUMN_LIST_INFO.forEach(({ name, type }) => {
+          fieldList.push(name);
+          valuesPlaceholder.push(`$${name}`);
+          const jsValue = jsData[name];
 
-        if (type === "TEXT") {
-          if (typeof jsValue !== "string")
-            params[`$${name}`] = JSON.stringify(jsValue);
-          else params[`$${name}`] = jsValue;
-        } else {
-          params[`$${name}`] = jsValue;
-        }
-      });
+          if (type === "TEXT") {
+            if (typeof jsValue !== "string")
+              params[`$${name}`] = JSON.stringify(jsValue);
+            else params[`$${name}`] = jsValue;
+          } else {
+            params[`$${name}`] = jsValue;
+          }
+        });
 
-      const query = `INSERT OR REPLACE INTO ${escapeStr(
-        TABLE_NAME
-      )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
-      requestsData.push({ query, params, partitionKey: convId });
+        const query = `INSERT OR REPLACE INTO ${escapeStr(
+          TABLE_NAME
+        )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+        requestsData.push({ query, params, partitionKey: convId });
+      }
     }
 
     const start = performance.now();
@@ -98,7 +109,7 @@ const originalExecute = async (
     const end = performance.now();
     nTransactionWrite = end - start;
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   // READ
@@ -115,18 +126,20 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const item = getData(i);
       const { toUid: partitionKey } = item;
-      const params: any[] = [];
-      const primaryKeyConditions: string[] = [];
-      PRIMARY_KEYS.forEach((key) => {
-        primaryKeyConditions.push(`${escapeStr(key)}=?`);
-        params.push(item[key]);
-      });
+      if (partitionKeys.includes(partitionKey)) {
+        const params: any[] = [];
+        const primaryKeyConditions: string[] = [];
+        PRIMARY_KEYS.forEach((key) => {
+          primaryKeyConditions.push(`${escapeStr(key)}=?`);
+          params.push(item[key]);
+        });
 
-      const query = `SELECT * FROM ${escapeStr(
-        TABLE_NAME
-      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+        const query = `SELECT * FROM ${escapeStr(
+          TABLE_NAME
+        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
 
-      requestsData.push({ partitionKey, query, params });
+        requestsData.push({ partitionKey, query, params });
+      }
     }
 
     const checksumData: string[] = [];
@@ -158,7 +171,7 @@ const originalExecute = async (
 
     verifyReadSingleItem(checksumData, datasetSize);
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   //#endregion
@@ -180,35 +193,37 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const { toUid: partitionKey } = jsData;
-      if (groupByConvId[partitionKey] === undefined) {
-        groupByConvId[partitionKey] = [];
-      }
-
-      const params: any = {};
-      const fieldList: string[] = [];
-      const valuesPlaceholder: string[] = [];
-      COLUMN_LIST_INFO.forEach(({ name, type }) => {
-        fieldList.push(name);
-        valuesPlaceholder.push(`$${name}`);
-        const jsValue = jsData[name];
-
-        if (type === "TEXT") {
-          if (typeof jsValue !== "string")
-            params[`$${name}`] = JSON.stringify(jsValue);
-          else params[`$${name}`] = jsValue;
-        } else {
-          params[`$${name}`] = jsValue;
+      if (partitionKeys.includes(partitionKey)) {
+        if (groupByConvId[partitionKey] === undefined) {
+          groupByConvId[partitionKey] = [];
         }
-      });
 
-      const query = `INSERT OR REPLACE INTO ${escapeStr(
-        TABLE_NAME
-      )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+        const params: any = {};
+        const fieldList: string[] = [];
+        const valuesPlaceholder: string[] = [];
+        COLUMN_LIST_INFO.forEach(({ name, type }) => {
+          fieldList.push(name);
+          valuesPlaceholder.push(`$${name}`);
+          const jsValue = jsData[name];
 
-      groupByConvId[partitionKey].push({
-        query,
-        params,
-      });
+          if (type === "TEXT") {
+            if (typeof jsValue !== "string")
+              params[`$${name}`] = JSON.stringify(jsValue);
+            else params[`$${name}`] = jsValue;
+          } else {
+            params[`$${name}`] = jsValue;
+          }
+        });
+
+        const query = `INSERT OR REPLACE INTO ${escapeStr(
+          TABLE_NAME
+        )} (${fieldList.join(",")}) VALUES (${valuesPlaceholder.join(", ")})`;
+
+        groupByConvId[partitionKey].push({
+          query,
+          params,
+        });
+      }
     }
 
     const requestsData: Array<[string, { query: string; params: any }[]]> =
@@ -267,7 +282,7 @@ const originalExecute = async (
 
     oneTransactionWrite = end - start;
 
-    addLogRequest.then((logId) => removeLog(logId)) ;
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   // READ
@@ -280,22 +295,24 @@ const originalExecute = async (
     for (let i = 0; i < datasetSize; i += 1) {
       const jsData = getData(i);
       const { toUid } = jsData;
-      if (groupByConvId[toUid] === undefined) {
-        groupByConvId[toUid] = [];
+      if (partitionKeys.includes(toUid)) {
+        if (groupByConvId[toUid] === undefined) {
+          groupByConvId[toUid] = [];
+        }
+
+        const params: any[] = [];
+        const primaryKeyConditions: string[] = [];
+        PRIMARY_KEYS.forEach((key) => {
+          primaryKeyConditions.push(`${escapeStr(key)}=?`);
+          params.push(jsData[key]);
+        });
+
+        const query = `SELECT * FROM ${escapeStr(
+          TABLE_NAME
+        )} WHERE ${primaryKeyConditions.join(" AND ")}`;
+
+        groupByConvId[toUid].push({ query, params });
       }
-
-      const params: any[] = [];
-      const primaryKeyConditions: string[] = [];
-      PRIMARY_KEYS.forEach((key) => {
-        primaryKeyConditions.push(`${escapeStr(key)}=?`);
-        params.push(jsData[key]);
-      });
-
-      const query = `SELECT * FROM ${escapeStr(
-        TABLE_NAME
-      )} WHERE ${primaryKeyConditions.join(" AND ")}`;
-
-      groupByConvId[toUid].push({ query, params });
     }
     const requestsData: Array<[string, { query: string; params: any }[]]> =
       Object.entries(groupByConvId);
@@ -327,7 +344,11 @@ const originalExecute = async (
                     if (error)
                       reject(
                         patchJSError(error, {
-                          tags: ["nodeIntegration-sqlite", "1-transaction", "read"],
+                          tags: [
+                            "nodeIntegration-sqlite",
+                            "1-transaction",
+                            "read",
+                          ],
                         })
                       );
                     else {
@@ -360,7 +381,7 @@ const originalExecute = async (
 
     verifyReadSingleItem(checksumData, datasetSize);
 
-    addLogRequest.then((logId) => removeLog(logId)) 
+    addLogRequest.then((logId) => removeLog(logId));
   }
 
   //#endregion

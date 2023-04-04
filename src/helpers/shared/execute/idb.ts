@@ -25,7 +25,44 @@ export const execute = async (
       nTransaction: 0,
       oneTransaction: 0,
     },
+    singleRead: {
+      nTransaction: 0,
+      oneTransaction: 0,
+    },
+    singleWrite: {
+      nTransaction: 0,
+      oneTransaction: 0,
+    },
   };
+
+  //#region single read write
+  {
+    const {
+      nTransactionRead,
+      nTransactionWrite,
+      oneTransactionRead,
+      oneTransactionWrite,
+    } = await IndexedDBExecutor.singleReadWrite(
+      benchmarkCount,
+      datasetSize,
+      DEFAULT_RELAXED_DURABILITY_MODE_ON,
+      DEFAULT_READ_USING_BATCH,
+      DEFAULT_READ_BATCH_SIZE,
+      addConsoleLog,
+      removeConsoleLog
+    );
+
+    finalResult["singleRead"] = {
+      nTransaction: nTransactionRead,
+      oneTransaction: oneTransactionRead,
+    };
+	
+	finalResult["singleWrite"] = {
+		nTransaction: nTransactionWrite,
+		oneTransaction: oneTransactionWrite,
+	  };
+  }
+  //#endregion
 
   //#region Update
   {
@@ -57,11 +94,11 @@ export const execute = async (
       addConsoleLog,
       removeConsoleLog
     );
-	
-	finalResult["delete"] = {
-		nTransaction,
-		oneTransaction,
-	  };
+
+    finalResult["delete"] = {
+      nTransaction,
+      oneTransaction,
+    };
   }
   //#endregion
 

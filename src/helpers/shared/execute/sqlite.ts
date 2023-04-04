@@ -17,16 +17,51 @@ export const execute = async (
       nTransaction: 0,
       oneTransaction: 0,
     },
+    singleRead: {
+      nTransaction: 0,
+      oneTransaction: 0,
+    },
+    singleWrite: {
+      nTransaction: 0,
+      oneTransaction: 0,
+    },
   };
 
-  //#region Update
+  //#region single read write
   {
-    const { nTransaction, oneTransaction } = await nodeIntegrationSQLite.updateItem(
+    const {
+      nTransactionRead,
+      nTransactionWrite,
+      oneTransactionRead,
+      oneTransactionWrite,
+    } = await nodeIntegrationSQLite.singleReadWrite(
       benchmarkCount,
       datasetSize,
       DEFAULT_READ_USING_BATCH,
       DEFAULT_READ_BATCH_SIZE
     );
+
+    finalResult["singleRead"] = {
+      nTransaction: nTransactionRead,
+      oneTransaction: oneTransactionRead,
+    };
+
+    finalResult["singleWrite"] = {
+      nTransaction: nTransactionWrite,
+      oneTransaction: oneTransactionWrite,
+    };
+  }
+  //#endregion
+
+  //#region Update
+  {
+    const { nTransaction, oneTransaction } =
+      await nodeIntegrationSQLite.updateItem(
+        benchmarkCount,
+        datasetSize,
+        DEFAULT_READ_USING_BATCH,
+        DEFAULT_READ_BATCH_SIZE
+      );
 
     finalResult["update"] = {
       nTransaction,
@@ -37,12 +72,13 @@ export const execute = async (
 
   //#region Delete
   {
-    const { nTransaction, oneTransaction } = await nodeIntegrationSQLite.deleteItem(
-      benchmarkCount,
-      datasetSize,
-      DEFAULT_READ_USING_BATCH,
-      DEFAULT_READ_BATCH_SIZE
-    );
+    const { nTransaction, oneTransaction } =
+      await nodeIntegrationSQLite.deleteItem(
+        benchmarkCount,
+        datasetSize,
+        DEFAULT_READ_USING_BATCH,
+        DEFAULT_READ_BATCH_SIZE
+      );
 
     finalResult["delete"] = {
       nTransaction,

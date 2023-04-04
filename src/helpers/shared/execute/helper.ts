@@ -60,6 +60,14 @@ export const formatDBEngineResult = (
 			nTransaction: 0,
 			oneTransaction: 0
 		},
+		singleRead: {
+			nTransaction: 0,
+			oneTransaction: 0
+		},
+		singleWrite: {
+			nTransaction: 0,
+			oneTransaction: 0
+		}
 	}
   const testcaseNames = Object.keys(result);
   for (const key of testcaseNames) {
