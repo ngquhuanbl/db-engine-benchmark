@@ -9,6 +9,7 @@ import {
   ReadFromEndSourceExtraData,
 } from "./action";
 import {
+	DeleteResult,
   ReadAllResult,
   ReadByIndexResult,
   ReadByLimitResult,
@@ -16,6 +17,7 @@ import {
   ReadByRangeResult,
   ReadFromEndSourceResult,
   SingleReadWriteResult,
+  UpdateResult,
 } from "./result";
 
 interface BaseMessage {
@@ -48,6 +50,26 @@ export type RemoveLogMessageRequest = BasePortMessageRequest<
 
 export type SingleReadWriteMessageRequest = BasePortMessageRequest<
   ActionTypes.SINGLE_READ_WRITE,
+  {
+    benchmarkCount: number;
+    datasetSize: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+  }
+>;
+
+export type UpdateMessageRequest = BasePortMessageRequest<
+  ActionTypes.UPDATE,
+  {
+    benchmarkCount: number;
+    datasetSize: number;
+    readUsingBatch: boolean;
+    readBatchSize: number;
+  }
+>;
+
+export type DeleteMessageRequest = BasePortMessageRequest<
+  ActionTypes.DELETE,
   {
     benchmarkCount: number;
     datasetSize: number;
@@ -127,7 +149,9 @@ export type MessageRequest =
   | ReadByLimitMessageRequest
   | ReadByRangeMessageRequest
   | ReadFromEndSourceMessageRequest
-  | ReadByNonIndexMessageRequest;
+  | ReadByNonIndexMessageRequest
+  | UpdateMessageRequest
+  | DeleteMessageRequest;
 
 interface BasePortMessageResult<Result> extends BaseMessage {
   type: typeof MessageTypes.RESPONSE;
@@ -154,6 +178,10 @@ export type ReadFromEndSourceMessageResult =
 
 export type ReadByNonIndexMessageResult =
   BasePortMessageResult<ReadByNonIndexResult>;
+  
+  export type UpdateMessageResult = BasePortMessageResult<UpdateResult>;
+
+  export type DeleteMessageResult = BasePortMessageResult<DeleteResult>;
 
 export type MessageResult =
   | AddLogMessageResult
@@ -163,6 +191,8 @@ export type MessageResult =
   | ReadByLimitMessageResult
   | ReadByRangeMessageResult
   | ReadFromEndSourceMessageResult
-  | ReadByNonIndexMessageResult;
+  | ReadByNonIndexMessageResult
+  | UpdateMessageResult
+  | DeleteMessageResult;
 
 export type Message = MessageRequest | MessageResult;

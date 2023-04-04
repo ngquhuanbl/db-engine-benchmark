@@ -7,6 +7,7 @@ const {
   MESSAGE,
   LOAD_DATA,
   LOAD_DATA_PROGRESS,
+  WRITE_RESULT
 } = require("./channel");
 const sqlite3 = require("./sqlite3");
 
@@ -58,5 +59,11 @@ process.once("loaded", () => {
     removeMessageListener: (listener) =>
       ipcRenderer.removeListener(MESSAGE, listener),
     sendMessage: (message) => ipcRenderer.send(MESSAGE, message),
+  });
+  
+  contextBridge.exposeInMainWorld("resultHandler", {
+    write: (message) => {
+      ipcRenderer.send(WRITE_RESULT, message);
+    },
   });
 });
