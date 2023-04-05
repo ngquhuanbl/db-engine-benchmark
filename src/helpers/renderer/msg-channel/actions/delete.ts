@@ -220,7 +220,7 @@ const originalExecute = async (
   //         ([partitionKey, data]) =>
   //           new Promise<void>((resolve, reject) => {
   //             openSQLiteDatabase(partitionKey).then((conn) =>
-  //               conn.serialize(() => {
+  //               conn.serialize((conn) => {
   //                 conn.run("BEGIN TRANSACTION", (error) => {
   //                   if (error)
   //                     reject(
