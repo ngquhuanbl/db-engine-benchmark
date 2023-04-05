@@ -95,7 +95,7 @@ const originalExecute = async (
                 if (error)
                   reject(
                     patchJSError(error, {
-                      tags: ["preload-sqlite", "n-transaction", "write"],
+                      tags: ["nodeIntegration-sqlite", "n-transaction", "write"],
                     })
                   );
                 else {
@@ -154,7 +154,7 @@ const originalExecute = async (
                 if (error)
                   reject(
                     patchJSError(error, {
-                      tags: ["preload-sqlite", "n-transaction", "read"],
+                      tags: ["nodeIntegration-sqlite", "n-transaction", "read"],
                     })
                   );
                 else {
@@ -241,7 +241,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "preload-sqlite",
+                          "nodeIntegration-sqlite",
                           "1-transaction",
                           "write",
                           "begin-transaction",
@@ -254,7 +254,7 @@ const originalExecute = async (
                     if (error)
                       reject(
                         patchJSError(error, {
-                          tags: ["preload-sqlite", "1-transaction", "write"],
+                          tags: ["nodeIntegration-sqlite", "1-transaction", "write"],
                         })
                       );
                   });
@@ -264,7 +264,7 @@ const originalExecute = async (
                     reject(
                       patchJSError(error, {
                         tags: [
-                          "preload-sqlite",
+                          "nodeIntegration-sqlite",
                           "1-transaction",
                           "write",
                           "commit-transaction",

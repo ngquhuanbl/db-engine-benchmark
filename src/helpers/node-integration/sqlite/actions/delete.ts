@@ -142,7 +142,7 @@ const originalExecute = async (
                         tags: [
                           "nodeIntegration-sqlite",
                           "n-transaction",
-                          "write",
+                          "delete",
                         ],
                       })
                     )
@@ -233,7 +233,7 @@ const originalExecute = async (
         ([partitionKey, data]) =>
           new Promise<void>((resolve, reject) => {
             DB.getConnectionForConv(partitionKey).then((conn) =>
-              conn.serialize(() => {
+              conn.serialize((conn) => {
                 conn.run("BEGIN TRANSACTION", (error) => {
                   if (error)
                     reject(
@@ -241,7 +241,7 @@ const originalExecute = async (
                         tags: [
                           "nodeIntegration-sqlite",
                           "1-transaction",
-                          "write",
+                          "delete",
                           "begin-transaction",
                         ],
                       })
@@ -256,7 +256,7 @@ const originalExecute = async (
                           tags: [
                             "nodeIntegration-sqlite",
                             "1-transaction",
-                            "write",
+                            "delete",
                           ],
                         })
                       );
@@ -270,7 +270,7 @@ const originalExecute = async (
                         tags: [
                           "nodeIntegration-sqlite",
                           "1-transaction",
-                          "write",
+                          "delete",
                           "commit-transaction",
                         ],
                       })
